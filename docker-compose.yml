@@ -1,0 +1,37 @@
+services:
+
+  # ── Backend: FastAPI + ML Predictor ──────────────────────────────────────
+  backend:
+    build:
+      context: ./backend          # Dockerfile lives here
+    container_name: trace_backend
+    ports:
+      - "8000:8000"               # localhost:8000 → container:8000
+    restart: unless-stopped
+    networks:
+      - trace_net
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s           # give extra time for model to load
+
+  # ── Frontend: nginx serving static HTML ──────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend         # Dockerfile lives here
+    container_name: trace_frontend
+    ports:
+      - "3000:3000"               # localhost:3000 → container:3000
+    depends_on:
+      backend:
+        condition: service_healthy  # wait until backend passes healthcheck
+    restart: unless-stopped
+    networks:
+      - trace_net
+
+# ── Shared network ────────────────────────────────────────────────────────
+networks:
+  trace_net:
+    driver: bridge

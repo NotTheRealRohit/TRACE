@@ -1,0 +1,37 @@
+ECU Fault Code
+P1128, P2187
+Voltage
+11.5
+Technician Notes
+Long crank time observed, customer complaint about engine response
+
+ECU Fault Code
+P2096, P2101
+Voltage
+13.1
+Technician Notes
+Check engine light on, vehicle running normally on road test
+
+
+ECU Fault Code
+(leave empty)
+Voltage
+12.4
+Technician Notes
+Customer reports difficulty starting on cold mornings, warm starts are fine
+
+
+ECU Fault Code
+C0045
+Voltage
+12.8
+Technician Notes
+Brake warning light ON, ABS module unresponsive
+
+
+ECU Fault Code
+P3000, P3400
+Voltage
+14.0
+Technician Notes
+Hybrid battery management warning displayed on instrument cluster

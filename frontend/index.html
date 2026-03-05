@@ -1,0 +1,654 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>TRACE — Warranty Analysis</title>
+  <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&family=Exo+2:wght@300;400;600&display=swap" rel="stylesheet"/>
+  <style>
+    :root {
+      --bg:        #050c18;
+      --panel:     #0a1628;
+      --border:    #1a2e4a;
+      --border-hi: #00b4d8;
+      --cyan:      #00e5ff;
+      --cyan-dim:  #00b4d8;
+      --text:      #c8d8e8;
+      --text-dim:  #6a8aaa;
+      --green:     #00ff88;
+      --red:       #ff3c5c;
+      --amber:     #ffb830;
+      --font-ui:   'Rajdhani', sans-serif;
+      --font-mono: 'Share Tech Mono', monospace;
+      --font-body: 'Exo 2', sans-serif;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font-body);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ── Grid background ── */
+    body::before {
+      content: '';
+      position: fixed; inset: 0;
+      background-image:
+        linear-gradient(rgba(0,180,216,.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,180,216,.04) 1px, transparent 1px);
+      background-size: 40px 40px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* ── Header ── */
+    header {
+      position: relative;
+      z-index: 1;
+      text-align: center;
+      padding: 2.8rem 1rem 1.6rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .logo {
+      font-family: var(--font-ui);
+      font-size: 3.4rem;
+      font-weight: 700;
+      letter-spacing: .25em;
+      color: var(--cyan);
+      text-shadow: 0 0 20px rgba(0,229,255,.4), 0 0 60px rgba(0,229,255,.15);
+      position: relative;
+    }
+
+    .logo::before, .logo::after {
+      content: '//';
+      font-size: 1.4rem;
+      color: var(--border-hi);
+      vertical-align: middle;
+      margin: 0 .6rem;
+      opacity: .6;
+    }
+
+    .subtitle {
+      font-family: var(--font-mono);
+      font-size: .72rem;
+      letter-spacing: .18em;
+      color: var(--text-dim);
+      margin-top: .5rem;
+      text-transform: uppercase;
+    }
+
+    .status-bar {
+      display: flex;
+      justify-content: center;
+      gap: 2rem;
+      margin-top: 1.2rem;
+      font-family: var(--font-mono);
+      font-size: .65rem;
+      color: var(--text-dim);
+    }
+
+    .status-bar span { display: flex; align-items: center; gap: .4rem; }
+    .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green);
+           box-shadow: 0 0 8px var(--green); animation: pulse 2s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+    /* ── Main layout ── */
+    main {
+      position: relative;
+      z-index: 1;
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 2rem 1.5rem;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.5rem;
+    }
+
+    @media (max-width: 720px) { main { grid-template-columns: 1fr; } }
+
+    /* ── Panels ── */
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 1.8rem;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .panel::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, var(--cyan-dim), transparent);
+    }
+
+    .panel-label {
+      font-family: var(--font-ui);
+      font-size: .65rem;
+      letter-spacing: .2em;
+      color: var(--cyan-dim);
+      text-transform: uppercase;
+      margin-bottom: 1.4rem;
+      display: flex;
+      align-items: center;
+      gap: .6rem;
+    }
+
+    .panel-label::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+
+    /* ── Form ── */
+    .field { margin-bottom: 1.4rem; }
+
+    label {
+      display: block;
+      font-family: var(--font-ui);
+      font-size: .75rem;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      margin-bottom: .5rem;
+    }
+
+    input, textarea {
+      width: 100%;
+      background: rgba(0,0,0,.35);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-family: var(--font-mono);
+      font-size: .9rem;
+      padding: .7rem 1rem;
+      border-radius: 3px;
+      outline: none;
+      transition: border-color .2s, box-shadow .2s;
+    }
+
+    input::placeholder, textarea::placeholder {
+      color: var(--text-dim);
+      opacity: .5;
+    }
+
+    input:focus, textarea:focus {
+      border-color: var(--cyan-dim);
+      box-shadow: 0 0 0 2px rgba(0,180,216,.15);
+    }
+
+    textarea { resize: vertical; min-height: 110px; }
+
+    /* DTC input hint */
+    .hint {
+      font-family: var(--font-mono);
+      font-size: .62rem;
+      color: var(--text-dim);
+      margin-top: .3rem;
+      opacity: .7;
+    }
+
+    /* Voltage row */
+    .voltage-row { display: flex; align-items: center; gap: .8rem; }
+    .voltage-row input { flex: 1; }
+    .voltage-unit {
+      font-family: var(--font-mono);
+      font-size: .9rem;
+      color: var(--cyan-dim);
+      min-width: 1.5rem;
+    }
+
+    /* ── Analyze button ── */
+    .btn-analyze {
+      width: 100%;
+      padding: .85rem;
+      background: transparent;
+      border: 1px solid var(--cyan);
+      color: var(--cyan);
+      font-family: var(--font-ui);
+      font-size: 1.05rem;
+      font-weight: 600;
+      letter-spacing: .25em;
+      text-transform: uppercase;
+      cursor: pointer;
+      border-radius: 3px;
+      position: relative;
+      overflow: hidden;
+      transition: color .2s, background .2s, box-shadow .2s;
+      margin-top: .4rem;
+    }
+
+    .btn-analyze::before {
+      content: '';
+      position: absolute; inset: 0;
+      background: var(--cyan);
+      transform: scaleX(0);
+      transform-origin: left;
+      transition: transform .25s ease;
+      z-index: 0;
+    }
+
+    .btn-analyze:hover::before { transform: scaleX(1); }
+    .btn-analyze:hover { color: var(--bg); box-shadow: 0 0 20px rgba(0,229,255,.3); }
+    .btn-analyze span { position: relative; z-index: 1; }
+
+    .btn-analyze:disabled {
+      opacity: .45;
+      cursor: not-allowed;
+    }
+    .btn-analyze:disabled::before { display: none; }
+
+    /* ── Result panel ── */
+    #result-placeholder {
+      color: var(--text-dim);
+      font-family: var(--font-mono);
+      font-size: .85rem;
+      line-height: 1.9;
+      opacity: .55;
+    }
+
+    #result-content { display: none; }
+
+    .verdict {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      margin-bottom: 1.6rem;
+    }
+
+    .verdict-badge {
+      font-family: var(--font-ui);
+      font-size: 1.3rem;
+      font-weight: 700;
+      letter-spacing: .1em;
+      padding: .5rem 1.2rem;
+      border-radius: 3px;
+      text-transform: uppercase;
+    }
+
+    .badge-approved  { background: rgba(0,255,136,.12); border:1px solid var(--green); color: var(--green); }
+    .badge-rejected  { background: rgba(255,60,92,.12);  border:1px solid var(--red);   color: var(--red); }
+    .badge-manual    { background: rgba(255,184,48,.1);  border:1px solid var(--amber); color: var(--amber); }
+
+    .confidence-ring {
+      position: relative;
+      width: 62px; height: 62px;
+      flex-shrink: 0;
+    }
+
+    .confidence-ring svg { transform: rotate(-90deg); }
+
+    .confidence-ring .ring-bg  { fill: none; stroke: var(--border); stroke-width: 5; }
+    .confidence-ring .ring-val { fill: none; stroke-width: 5;
+                                  stroke-linecap: round;
+                                  transition: stroke-dashoffset .6s ease; }
+
+    .ring-label {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      font-family: var(--font-mono);
+    }
+
+    .ring-pct  { font-size: .85rem; font-weight: 600; }
+    .ring-text { font-size: .45rem; color: var(--text-dim); letter-spacing: .05em; }
+
+    /* Data rows */
+    .data-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: .9rem;
+      margin-bottom: 1.2rem;
+    }
+
+    .data-cell {
+      background: rgba(0,0,0,.25);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      padding: .7rem .9rem;
+    }
+
+    .data-cell-label {
+      font-family: var(--font-ui);
+      font-size: .58rem;
+      letter-spacing: .15em;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      margin-bottom: .3rem;
+    }
+
+    .data-cell-value {
+      font-family: var(--font-mono);
+      font-size: .78rem;
+      color: var(--cyan);
+      line-height: 1.4;
+    }
+
+    .reason-box {
+      background: rgba(0,0,0,.25);
+      border: 1px solid var(--border);
+      border-left: 2px solid var(--cyan-dim);
+      border-radius: 3px;
+      padding: .8rem 1rem;
+      font-family: var(--font-body);
+      font-size: .83rem;
+      line-height: 1.65;
+      color: var(--text);
+    }
+
+    .reason-label {
+      font-family: var(--font-ui);
+      font-size: .58rem;
+      letter-spacing: .15em;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      margin-bottom: .5rem;
+    }
+
+    /* Engine tag */
+    .engine-tag {
+      display: inline-block;
+      font-family: var(--font-mono);
+      font-size: .6rem;
+      padding: .15rem .5rem;
+      border-radius: 2px;
+      margin-top: .9rem;
+      letter-spacing: .05em;
+      background: rgba(0,180,216,.1);
+      border: 1px solid rgba(0,180,216,.3);
+      color: var(--cyan-dim);
+    }
+
+    /* Scanning animation */
+    @keyframes scanline {
+      0%   { top: 0; opacity: .6; }
+      100% { top: 100%; opacity: 0; }
+    }
+
+    .scan-overlay {
+      position: absolute; inset: 0;
+      pointer-events: none;
+      overflow: hidden;
+      display: none;
+    }
+
+    .scan-overlay.active { display: block; }
+
+    .scan-overlay::after {
+      content: '';
+      position: absolute;
+      left: 0; right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, transparent, var(--cyan), transparent);
+      animation: scanline .8s linear forwards;
+    }
+
+    /* Spinner */
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .spinner {
+      display: inline-block;
+      width: 14px; height: 14px;
+      border: 2px solid var(--border);
+      border-top-color: var(--cyan);
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+      vertical-align: middle;
+      margin-right: .5rem;
+    }
+
+    /* ── Footer ── */
+    footer {
+      position: relative; z-index: 1;
+      text-align: center;
+      padding: 1.5rem;
+      font-family: var(--font-mono);
+      font-size: .6rem;
+      color: var(--text-dim);
+      opacity: .5;
+      border-top: 1px solid var(--border);
+      margin-top: .5rem;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">TRACE</div>
+  <div class="subtitle">Technical Warranty Recommender for Analysis of Customer Error</div>
+  <div class="status-bar">
+    <span><span class="dot"></span> ML Engine Online</span>
+    <span>&#9670; Dataset: 12,000 Claims (2019–2024)</span>
+    <span>&#9670; Model: RandomForest + Rule Engine</span>
+  </div>
+</header>
+
+<main>
+
+  <!-- ── Input Panel ── -->
+  <div class="panel" id="input-panel">
+    <div class="scan-overlay" id="scan-overlay"></div>
+    <div class="panel-label">Warranty Claim Input</div>
+
+    <div class="field">
+      <label>ECU Fault Code (DTC)</label>
+      <input type="text" id="fault_code" placeholder="e.g. P0562, U0100, C0045" autocomplete="off"/>
+      <div class="hint">Separate multiple codes with commas · P / U / C / B prefix recognized</div>
+    </div>
+
+    <div class="field">
+      <label>Voltage Reading</label>
+      <div class="voltage-row">
+        <input type="number" id="voltage" placeholder="e.g. 14.2" step="0.1" min="0" max="30"/>
+        <span class="voltage-unit">V</span>
+      </div>
+      <div class="hint">Normal range: 11–16 V · Over-voltage (&gt;16 V) triggers EOS rejection</div>
+    </div>
+
+    <div class="field">
+      <label>Technician Notes</label>
+      <textarea id="technician_notes" placeholder="Enter technician observations, symptoms, and findings..."></textarea>
+      <div class="hint">Describe symptoms, test results, visual inspection — free text accepted</div>
+    </div>
+
+    <button class="btn-analyze" id="analyze-btn" onclick="analyzeClaim()">
+      <span id="btn-text">&#x25B6;&nbsp; Analyze Claim</span>
+    </button>
+  </div>
+
+  <!-- ── Result Panel ── -->
+  <div class="panel" id="result-panel">
+    <div class="panel-label">TRACE Recommendation</div>
+
+    <div id="result-placeholder">
+      &gt; Awaiting claim data...<br>
+      &gt; Load ECU fault codes<br>
+      &gt; Input voltage reading<br>
+      &gt; Enter technician observations<br>
+      &gt; Run analysis
+    </div>
+
+    <div id="result-content">
+      <!-- Verdict + confidence ring -->
+      <div class="verdict">
+        <div class="verdict-badge" id="verdict-badge">—</div>
+        <div style="flex:1"></div>
+        <div class="confidence-ring">
+          <svg viewBox="0 0 62 62" width="62" height="62">
+            <circle class="ring-bg"  cx="31" cy="31" r="27"/>
+            <circle class="ring-val" id="ring-arc" cx="31" cy="31" r="27"
+                    stroke-dasharray="169.6" stroke-dashoffset="169.6"/>
+          </svg>
+          <div class="ring-label">
+            <span class="ring-pct" id="ring-pct">--%</span>
+            <span class="ring-text">CONF</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Data cells -->
+      <div class="data-grid">
+        <div class="data-cell">
+          <div class="data-cell-label">Failure Analysis</div>
+          <div class="data-cell-value" id="out-failure">—</div>
+        </div>
+        <div class="data-cell">
+          <div class="data-cell-label">Warranty Decision</div>
+          <div class="data-cell-value" id="out-warranty">—</div>
+        </div>
+        <div class="data-cell">
+          <div class="data-cell-label">Matched Complaint</div>
+          <div class="data-cell-value" id="out-complaint">—</div>
+        </div>
+        <div class="data-cell">
+          <div class="data-cell-label">Confidence Score</div>
+          <div class="data-cell-value" id="out-confidence">—</div>
+        </div>
+      </div>
+
+      <!-- Reason -->
+      <div>
+        <div class="reason-label">Analysis Reasoning</div>
+        <div class="reason-box" id="out-reason">—</div>
+      </div>
+
+      <div class="engine-tag" id="out-engine">engine: —</div>
+    </div>
+  </div>
+
+</main>
+
+<footer>
+  TRACE v2.0 &nbsp;&#x2502;&nbsp; Hybrid Rule + RandomForest Engine &nbsp;&#x2502;&nbsp; Warranty Dataset 2019-2024
+</footer>
+
+<script>
+  const API_URL = "http://localhost:8000/analyze";
+
+  async function analyzeClaim() {
+    const fault_code       = document.getElementById("fault_code").value.trim();
+    const voltage          = parseFloat(document.getElementById("voltage").value);
+    const technician_notes = document.getElementById("technician_notes").value.trim();
+
+    if (!technician_notes && !fault_code) {
+      flashInput(); return;
+    }
+    if (isNaN(voltage)) {
+      document.getElementById("voltage").focus();
+      document.getElementById("voltage").style.borderColor = "var(--amber)";
+      setTimeout(() => document.getElementById("voltage").style.borderColor = "", 1500);
+      return;
+    }
+
+    setBusy(true);
+
+    try {
+      const resp = await fetch(API_URL, {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ fault_code, technician_notes, voltage }),
+      });
+
+      if (!resp.ok) {
+        const err = await resp.json();
+        throw new Error(err.detail || "API error");
+      }
+
+      const data = await resp.json();
+      renderResult(data);
+
+    } catch (e) {
+      renderError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function renderResult(d) {
+    document.getElementById("result-placeholder").style.display = "none";
+    const rc = document.getElementById("result-content");
+    rc.style.display = "block";
+
+    // Badge
+    const badge = document.getElementById("verdict-badge");
+    badge.textContent = d.status;
+    badge.className   = "verdict-badge " + {
+      "Approved":           "badge-approved",
+      "Rejected":           "badge-rejected",
+      "Needs Manual Review":"badge-manual",
+    }[d.status] || "badge-manual";
+
+    // Confidence ring
+    const pct  = Math.round(d.confidence);
+    const circ = 169.6;
+    const arc  = document.getElementById("ring-arc");
+    const col  = d.status === "Approved" ? "#00ff88" : d.status === "Rejected" ? "#ff3c5c" : "#ffb830";
+    arc.style.stroke = col;
+    arc.style.strokeDashoffset = circ - (circ * pct / 100);
+
+    const ringPct = document.getElementById("ring-pct");
+    ringPct.textContent = pct + "%";
+    ringPct.style.color = col;
+
+    document.getElementById("out-failure").textContent    = d.failure_analysis;
+    document.getElementById("out-warranty").textContent   = d.warranty_decision;
+    document.getElementById("out-complaint").textContent  = d.matched_complaint;
+    document.getElementById("out-confidence").textContent = d.confidence.toFixed(1) + "%";
+    document.getElementById("out-reason").textContent     = d.reason;
+    document.getElementById("out-engine").textContent     = "engine: " + d.decision_engine;
+
+    // Scanline effect on input panel
+    const so = document.getElementById("scan-overlay");
+    so.classList.add("active");
+    setTimeout(() => so.classList.remove("active"), 900);
+  }
+
+  function renderError(msg) {
+    document.getElementById("result-placeholder").style.display = "none";
+    const rc = document.getElementById("result-content");
+    rc.style.display = "block";
+
+    const badge = document.getElementById("verdict-badge");
+    badge.textContent = "Error";
+    badge.className   = "verdict-badge badge-rejected";
+    document.getElementById("out-reason").textContent = "Connection failed: " + msg +
+      "\n\nEnsure the backend is running:\n  uvicorn main:app --reload --port 8000";
+    document.getElementById("out-failure").textContent   = "—";
+    document.getElementById("out-warranty").textContent  = "—";
+    document.getElementById("out-complaint").textContent = "—";
+    document.getElementById("out-confidence").textContent= "—";
+    document.getElementById("ring-pct").textContent      = "?%";
+    document.getElementById("ring-arc").style.strokeDashoffset = "169.6";
+  }
+
+  function setBusy(busy) {
+    const btn  = document.getElementById("analyze-btn");
+    const text = document.getElementById("btn-text");
+    btn.disabled = busy;
+    text.innerHTML = busy
+      ? '<span class="spinner"></span> Analyzing...'
+      : '&#x25B6;&nbsp; Analyze Claim';
+  }
+
+  function flashInput() {
+    ["fault_code","technician_notes"].forEach(id => {
+      const el = document.getElementById(id);
+      el.style.borderColor = "var(--amber)";
+      setTimeout(() => el.style.borderColor = "", 1500);
+    });
+  }
+
+  // Allow Enter key in inputs (but not textarea) to submit
+  document.addEventListener("keydown", e => {
+    if (e.key === "Enter" && e.target.tagName !== "TEXTAREA") analyzeClaim();
+  });
+</script>
+</body>
+</html>
