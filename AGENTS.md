@@ -29,6 +29,23 @@
 
 ## Build, Run & Test Commands
 
+### Environment Notes
+
+This project uses **pyenv** for Python version management. Some commands may require specific invocations:
+
+| Command | Direct | Via Python Module | Notes |
+|---------|--------|------------------|-------|
+| Python | `python` or `python3` | `python3 -m pytest` | Use `python3` to avoid ambiguity |
+| pytest | `pytest` (if in PATH) | `python3 -m pytest` | Preferred: use module invocation |
+| ruff | `ruff` (if installed) | N/A | Install via: `pip install ruff` |
+| black | `black` (if installed) | `python3 -m black` | Install via: `pip install black` |
+
+**Installation:**
+```bash
+# Install linting tools (if not already installed)
+pip install ruff black isort pytest
+```
+
 ### Backend
 
 ```bash
@@ -48,10 +65,19 @@ uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```bash
 # Run the built-in smoke tests in ml_predictor.py
 cd backend
-python -c "from ml_predictor import predict; print(predict('P0562', 'Engine overheating', 14.2))"
+python3 -c "from ml_predictor import predict; print(predict('P0562', 'Engine overheating', 14.2))"
 
 # Or run the main module's test block
-python ml_predictor.py
+python3 ml_predictor.py
+
+# Run all tests (use module invocation to avoid PATH issues)
+python3 -m pytest
+
+# Run specific test
+python3 -m pytest -k "test_name"
+
+# Run with verbose output
+python3 -m pytest -v
 ```
 
 ### API Testing
@@ -79,20 +105,20 @@ docker-compose up backend
 ### Linting & Code Quality
 
 ```bash
-# Install linting tools
+# Install linting tools (if not already installed)
 pip install ruff black isort
 
 # Format code (in-place)
-black backend/
+python3 -m black backend/
 
 # Sort imports
-isort backend/
+python3 -m isort backend/
 
 # Lint
 ruff check backend/
 
 # All-in-one (format + lint)
-black backend/ && isort backend/ && ruff check backend/
+python3 -m black backend/ && python3 -m isort backend/ && ruff check backend/
 ```
 
 ---
@@ -267,7 +293,7 @@ Edit `RULES` list in `ml_predictor.py`:
 
 ```bash
 cd backend
-python -c "from ml_predictor import train_and_save; train_and_save()"
+python3 -c "from ml_predictor import train_and_save; train_and_save()"
 ```
 
 Or simply delete `trace_models.pkl` and restart the server — it auto-trains on startup.
