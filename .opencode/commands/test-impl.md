@@ -193,52 +193,69 @@ Confidence variance:     avg ±0.08 (acceptable)
 
 ---
 
-### Step 3: Compile and Present Results
+### Step 3: Compile Results and Write to Disk
 
-```
-## Test Results: [Plan Name]
+**Determine the output path** from the plan filename and phase:
+- Plan: `thoughts/shared/plans/2026-03-06-openrouter-llm-integration.md`
+- Phase: 2
+- Output: `thoughts/shared/reviews/2026-03-06-phase-2-test.md`
 
-### Overall Verdict: PASS | PARTIAL PASS | FAIL
+**Write the findings file** to `thoughts/shared/reviews/YYYY-MM-DD-phase-N-test.md`:
+
+```markdown
+---
+test_date: YYYY-MM-DD
+plan: thoughts/shared/plans/YYYY-MM-DD-[name].md
+phase: N
+verdict: PASS | PARTIAL PASS | FAIL
+tested_by: opencode
+---
+
+# Test Results: [Plan Name] — Phase N
+
+## Overall Verdict: PASS | PARTIAL PASS | FAIL
 
 ---
 
-### Suite Results Summary
+## Suite Results Summary
 
 | Suite | Result | Notes |
 |-------|--------|-------|
-| 1. Schema Validation     | ✅ PASS | All 5 outputs valid |
-| 2. Category Accuracy     | ❌ FAIL | 16/20 (80%) — below 90% threshold |
-| 3. Edge Cases            | ⚠️ PARTIAL | Empty string causes unhandled crash |
-| 4. API Resilience        | ✅ PASS | Retry logic works correctly |
-| 5. Pipeline Integration  | ✅ PASS | Existing ML models unaffected |
-| 6. Consistency           | ⚠️ PARTIAL | Subcategory fluctuates on brake inputs |
+| 1. Schema Validation     | ✅ PASS / ❌ FAIL / ⚠️ PARTIAL | [brief note] |
+| 2. Category Accuracy     | ✅ PASS / ❌ FAIL / ⚠️ PARTIAL | [X/Y (ZZ%)] |
+| 3. Edge Cases            | ✅ PASS / ❌ FAIL / ⚠️ PARTIAL | [brief note] |
+| 4. API Resilience        | ✅ PASS / ❌ FAIL / ⚠️ PARTIAL | [brief note] |
+| 5. Pipeline Integration  | ✅ PASS / ❌ FAIL / ⚠️ PARTIAL | [brief note] |
+| 6. Consistency           | ✅ PASS / ❌ FAIL / ⚠️ PARTIAL | [brief note] |
 
 ---
 
-### Failures (with actual outputs)
+## Failures (with actual outputs)
 
-**Suite 2 — Accuracy failure (4 wrong)**
-1. Input: "brake pedal soft after sitting overnight"
-   Expected: brake_system/hydraulic
-   Got:      brake_system/mechanical
-   [full output JSON]
-
-2. ...
-
-**Suite 3 — Empty string crash**
-Input: ""
-Expected: "other" with reason or graceful error
-Got: KeyError: 'category' at parser.py:67
+[For each failing suite, include:]
+**Suite N — [Suite name] failure**
+Input: "[actual input used]"
+Expected: [what was expected]
+Got: [actual output / error / JSON]
 
 ---
 
-### Recommended Next Step
-[See routing section below]
+## Recommended Next Step
+[Exact command and context to pass it — see routing section]
 ```
+
+After writing, confirm to the user:
+```
+Test findings written to: thoughts/shared/reviews/YYYY-MM-DD-phase-N-test.md
+```
+
+Then **also present the full results in chat** — do not make the user open the file to see the results.
 
 ---
 
 ### Step 4: Route to the Correct Next Command
+
+Include the routing recommendation in both the written file and in chat:
 
 #### If all suites PASS:
 ```
@@ -274,12 +291,9 @@ After fixes, re-run:
 ❌ Category accuracy at XX% — below the 90% threshold.
 This is a prompt engineering issue, not a code bug.
 
-The plan's Phase 3 needs refinement. Run:
-/iterate_plan thoughts/shared/plans/2025-03-05-openrouter-note-parser.md
-— "Phase 3 accuracy is at XX%. These categories are being confused: 
-  [list confused pairs]. Update Phase 3 to add few-shot examples 
-  for these cases and update success criteria to require re-running 
-  test-impl after prompt changes."
+Run:
+/iterate_plan thoughts/shared/plans/2025-03-05-openrouter-note-parser.md \
+  --review thoughts/shared/reviews/YYYY-MM-DD-phase-N-test.md
 
 Then resume:
 /implement_plan thoughts/shared/plans/2025-03-05-openrouter-note-parser.md
@@ -294,10 +308,8 @@ Then re-test:
 This is a plan-level issue — the integration approach needs rethinking.
 
 Run:
-/iterate_plan thoughts/shared/plans/2025-03-05-openrouter-note-parser.md
-— "Pipeline integration in Phase 4 broke existing ML models. 
-   Rethink the integration approach to ensure the LLM layer 
-   is fully decoupled and bypassable."
+/iterate_plan thoughts/shared/plans/2025-03-05-openrouter-note-parser.md \
+  --review thoughts/shared/reviews/YYYY-MM-DD-phase-N-test.md
 
 Then:
 /implement_plan
@@ -314,3 +326,4 @@ Then:
 - **Accuracy below 90% is always a FAIL** — don't soften this
 - **Route explicitly** — always end with the exact command to run next
 - **One suite failure = overall FAIL** — unless it's a MINOR edge case with a clear workaround
+- **Always write findings to disk** — the test file is the contract that `iterate_plan` reads; never skip this step

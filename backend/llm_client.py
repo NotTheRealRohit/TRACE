@@ -6,6 +6,7 @@ Handles API calls to OpenRouter for technician note categorization.
 
 import os
 import json
+import time
 import requests
 from typing import Optional
 
@@ -46,7 +47,7 @@ Respond ONLY with JSON in this exact format:
 """
 
 
-def categorize_notes(notes: str, dtc_code: str, voltage: Optional[float]) -> dict:
+def categorize_notes(notes: str, dtc_code: str, voltage: Optional[float], timeout: int = 30) -> dict:
     """
     Call OpenRouter LLM to categorize technician notes.
     
@@ -54,6 +55,7 @@ def categorize_notes(notes: str, dtc_code: str, voltage: Optional[float]) -> dic
         notes: Technician's free-text notes
         dtc_code: Fault code (e.g., "P0562")
         voltage: Measured voltage reading
+        timeout: Request timeout in seconds (default 30)
     
     Returns:
         dict with keys: category, confidence, failure_analysis, reasoning
@@ -84,12 +86,20 @@ def categorize_notes(notes: str, dtc_code: str, voltage: Optional[float]) -> dic
         "temperature": 0.3,
     }
     
-    response = requests.post(
-        OPENROUTER_API_URL,
-        headers=headers,
-        json=payload,
-        timeout=30
-    )
+    try:
+        response = requests.post(
+            OPENROUTER_API_URL,
+            headers=headers,
+            json=payload,
+            timeout=timeout
+        )
+    except requests.Timeout:
+        raise RuntimeError("OpenRouter API request timed out")
+    except requests.RequestException as e:
+        raise RuntimeError(f"OpenRouter API request failed: {str(e)}")
+    
+    if response.status_code == 429:
+        raise RuntimeError("Rate limited by OpenRouter, try again later")
     
     if response.status_code != 200:
         raise RuntimeError(f"OpenRouter API error: {response.status_code} - {response.text}")
@@ -107,3 +117,42 @@ def categorize_notes(notes: str, dtc_code: str, voltage: Optional[float]) -> dic
         }
     except json.JSONDecodeError:
         raise RuntimeError(f"Failed to parse LLM response as JSON: {content}")
+
+
+def categorize_notes_with_retry(
+    notes: str,
+    dtc_code: str,
+    voltage: Optional[float],
+    max_retries: int = 2,
+    timeout: int = 30
+) -> Optional[dict]:
+    """
+    Call OpenRouter LLM with retry logic for transient failures.
+    
+    Args:
+        notes: Technician's free-text notes
+        dtc_code: Fault code (e.g., "P0562")
+        voltage: Measured voltage reading
+        max_retries: Maximum number of retry attempts (default 2)
+        timeout: Request timeout in seconds (default 30)
+    
+    Returns:
+        dict with keys: category, confidence, failure_analysis, reasoning
+        None if all retries are exhausted
+    
+    Raises:
+        RuntimeError: If non-retryable error occurs
+    """
+    for attempt in range(max_retries):
+        try:
+            return categorize_notes(notes, dtc_code, voltage, timeout)
+        except RuntimeError as e:
+            if attempt == max_retries - 1:
+                raise
+            if "rate" in str(e).lower():
+                sleep_time = 2 ** attempt
+                print(f"[TRACE] Rate limited, retrying in {sleep_time}s...")
+                time.sleep(sleep_time)
+                continue
+            raise
+    return None

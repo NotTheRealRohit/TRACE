@@ -21,7 +21,7 @@ Integrate OpenRouter LLM (`arcee-ai/trinity-large-preview:free`) into the rule e
 
 **Language/Stack**: Python 3.9+ / FastAPI
 **Test Runner**: pytest
-**Test Command**: `pytest` (to be determined based on test files created)
+**Test Command**: `pytest`
 
 ## Current State Analysis
 
@@ -54,7 +54,7 @@ After implementation:
 
 ### Key Discoveries:
 - OpenRouter API uses OpenAI-compatible `/api/v1/chat/completions` endpoint
-- Model: `arcee-ai/trinity-large-preview:free`
+- Model: `arcee-ai/trinity-large-preview:free` (configurable via `OPENROUTER_MODEL` env var)
 - Supports structured JSON output via `response_format`
 - API key already in `.env`
 
@@ -118,7 +118,7 @@ import requests
 from typing import Optional
 
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
-MODEL = "arcee-ai/trinity-large-preview:free"
+MODEL = os.getenv("OPENROUTER_MODEL", "arcee-ai/trinity-large-preview:free")
 
 def get_api_key() -> str:
     api_key = os.getenv("OPENROUTER_API_KEY")
@@ -248,6 +248,7 @@ Modify `ml_predictor.py` to call LLM client before iterating keyword rules.
 | `test_predictor_llm.py` | `test_fallback_to_rules_on_llm_error` | Falls back to keyword rules when LLM fails |
 | `test_predictor_llm.py` | `test_decision_engine_label_llm` | Returns "LLM" in decision_engine field |
 | `test_predictor_llm.py` | `test_empty_notes_skips_llm` | Skips LLM call when notes empty |
+| `test_predictor_llm.py` | `test_retry_logic_applied` | Uses categorize_notes_with_retry for rate limit handling |
 
 **Run each test to confirm RED before implementing:**
 ```bash
@@ -269,8 +270,8 @@ At line ~235 (before rule engine loop), add:
 llm_result = None
 if notes and len(notes.strip()) > 5:
     try:
-        from llm_client import categorize_notes
-        llm_result = categorize_notes(notes, fc, v)
+        from llm_client import categorize_notes_with_retry
+        llm_result = categorize_notes_with_retry(notes, fc, v)
     except Exception as LLM_ERROR:
         print(f"[TRACE] LLM call failed: {LLM_ERROR}, falling back to rules")
         llm_result = None
@@ -374,12 +375,14 @@ def categorize_notes_with_retry(notes: str, dtc_code: str, voltage: Optional[flo
     return None
 ```
 
+> **IMPORTANT**: The `categorize_notes_with_retry` function must be used in `ml_predictor.py` (Phase 2) for rate limit retries to work in production.
+
 ### Success Criteria:
 
 #### Automated Verification:
-- [ ] RED confirmed: All 3 tests fail before implementation
-- [ ] GREEN achieved: All 3 tests pass
-- [ ] Timeout completes within 60s total
+- [x] RED confirmed: All 3 tests fail before implementation
+- [x] GREEN achieved: All 3 tests pass
+- [x] Timeout completes within 60s total
 
 ---
 
@@ -395,11 +398,14 @@ Run end-to-end smoke tests and validate the full integration.
 | `test_e2e.py` | `test_full_pipeline_llm` | Full predict() with LLM returns valid response |
 | `test_e2e.py` | `test_fallback_chain` | LLM → Rules → ML fallback works |
 | `test_e2e.py` | `test_response_schema` | Response matches ClaimResponse schema |
+| `test_e2e.py` | `test_other_category_fallback` | LLM returns "other" → "Needs Manual Review" status |
 
 ### Changes Required:
 
 #### 1. Integration tests in `backend/tests/`
 Create test files matching the above TDD table.
+
+> **Note**: `test_response_schema` should mock the LLM response to avoid live network calls during automated testing. Add `@pytest.mark.integration` decorator if running separately.
 
 #### 2. Update smoke tests in `ml_predictor.py`
 Add LLM-based test cases to existing smoke tests.
@@ -407,9 +413,9 @@ Add LLM-based test cases to existing smoke tests.
 ### Success Criteria:
 
 #### Automated Verification:
-- [ ] RED confirmed: All 3 tests fail before implementation
-- [ ] GREEN achieved: All 3 tests pass
-- [ ] All existing smoke tests pass
+- [x] RED confirmed: All 3 tests fail before implementation
+- [x] GREEN achieved: All 3 tests pass
+- [x] All existing smoke tests pass
 
 #### Manual Verification:
 - [ ] API endpoint `/analyze` returns correct decision_engine
@@ -464,4 +470,4 @@ Add LLM-based test cases to existing smoke tests.
 
 - Research document: `thoughts/shared/research/2026-03-06-rule-engine-technician-notes.md`
 - OpenRouter API: https://openrouter.ai/docs/api/reference/overview
-- Model: `arcee-ai/trinity-large-preview:free`
+- Model: `arcee-ai/trinity-large-preview:free` (configurable via `OPENROUTER_MODEL` env var)

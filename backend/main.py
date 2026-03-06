@@ -6,10 +6,13 @@ Run:
     uvicorn main:app --reload --port 8000
 """
 
+from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import traceback
+
+load_dotenv()
 
 # Load predictor (trains model on first import if no pickle exists)
 #from ml_predictor import predict as ml_predict

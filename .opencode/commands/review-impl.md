@@ -164,47 +164,65 @@ Check:
 
 ---
 
-### Step 3: Compile and Present Results
+### Step 3: Compile Results and Write to Disk
 
-Present findings in this format:
+**Determine the output path** from the plan filename and phase:
+- Plan: `thoughts/shared/plans/2026-03-06-openrouter-llm-integration.md`
+- Phase: 2
+- Output: `thoughts/shared/reviews/2026-03-06-phase-2-review.md`
 
-```
-## Review Results: [Plan Name] — Phase [N] (or All Phases)
+**Write the findings file** to `thoughts/shared/reviews/YYYY-MM-DD-phase-N-review.md`:
 
-### Overall Verdict: PASS | PASS WITH MINORS | FAIL
+```markdown
+---
+review_date: YYYY-MM-DD
+plan: thoughts/shared/plans/YYYY-MM-DD-[name].md
+phase: N
+verdict: PASS | PASS WITH MINORS | FAIL
+reviewed_by: opencode
+---
+
+# Review: [Plan Name] — Phase N
+
+## Overall Verdict: PASS | PASS WITH MINORS | FAIL
 
 ---
 
-### BLOCKERS (must fix before proceeding)
-1. [file.py:42] — Error handling missing for 429 responses. OpenRouter 
-   returns 429 under load and current code raises unhandled HTTPError.
-   Fix: wrap the API call in retry logic with exponential backoff.
+## BLOCKERS (must fix before proceeding)
+1. [file.py:42] — [What is wrong]
+   Fix: [Concrete fix]
 
-### MAJOR Issues (fix in current phase before moving on)
-1. [tests/test_parser.py:15] — Golden test set has only 3 examples. 
-   Minimum required is 15 for meaningful accuracy verification.
-   Fix: add 12+ real domain notes to tests/fixtures/golden_notes.json
+## MAJOR Issues (fix in current phase before moving on)
+1. [file.py:15] — [What is wrong]
+   Fix: [Concrete fix]
 
-### MINOR Issues (can be addressed in a follow-up iterate_plan)
-1. [parser.py:88] — Model name "openai/gpt-4o" is hardcoded.
-   Fix: move to config or environment variable.
+## MINOR Issues (can be addressed in a follow-up iterate_plan)
+1. [file.py:88] — [What is wrong]
+   Fix: [Concrete fix]
 
 ---
 
-### What's Working Well
+## What's Working Well
 - [specific things done correctly]
 
 ---
 
-### Recommended Next Step
-[See routing section below]
+## Recommended Next Step
+[Exact command and context to pass it — see routing section]
 ```
+
+After writing, confirm to the user:
+```
+Review findings written to: thoughts/shared/reviews/YYYY-MM-DD-phase-N-review.md
+```
+
+Then **also present the findings in chat** in the same format as above — do not make the user open the file to see the results.
 
 ---
 
 ### Step 4: Route to the Correct Next Command
 
-Based on findings, give an explicit recommendation:
+Based on findings, give an explicit recommendation in chat AND include it in the written file:
 
 #### If PASS:
 ```
@@ -233,8 +251,8 @@ After fixes, re-run:
 ❌ Review failed — the plan itself needs updating before the implementation 
 can be fixed. Run:
 
-/iterate_plan thoughts/shared/plans/2025-03-05-openrouter-note-parser.md
-— [specific change needed, e.g. "add retry logic to Phase 2 success criteria"]
+/iterate_plan thoughts/shared/plans/2025-03-05-openrouter-note-parser.md \
+  --review thoughts/shared/reviews/YYYY-MM-DD-phase-N-review.md
 
 Then resume implementation:
 /implement_plan thoughts/shared/plans/2025-03-05-openrouter-note-parser.md
@@ -253,3 +271,4 @@ Then re-run this review:
 - **Read the actual code** — don't assume from filenames; read the full files
 - **Re-run tests yourself** — don't trust that green checkboxes in the plan are correct
 - **Be constructive** — the goal is a better implementation, not a perfect score
+- **Always write findings to disk** — the review file is the contract that `iterate_plan` reads; never skip this step

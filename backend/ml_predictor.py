@@ -236,8 +236,8 @@ def predict(fault_code: str, technician_notes: str, voltage: float) -> dict:
     llm_result = None
     if notes and len(notes.strip()) > 5:
         try:
-            from llm_client import categorize_notes
-            llm_result = categorize_notes(notes, fc, v)
+            from llm_client import categorize_notes_with_retry
+            llm_result = categorize_notes_with_retry(notes, fc, v)
         except Exception as LLM_ERROR:
             print(f"[TRACE] LLM call failed: {LLM_ERROR}, falling back to rules")
             llm_result = None

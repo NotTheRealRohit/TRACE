@@ -109,3 +109,22 @@ class TestPredictorLLMIntegration:
         
         mock_categorize.assert_not_called()
         assert result["decision_engine"] in ["Rule-based", "ML model"]
+
+    @patch('llm_client.categorize_notes_with_retry')
+    def test_retry_logic_applied(self, mock_retry):
+        """Uses categorize_notes_with_retry for rate limit handling"""
+        mock_retry.return_value = {
+            "category": "moisture_damage",
+            "confidence": 0.85,
+            "failure_analysis": "Sensor short due to moisture",
+            "reasoning": "Water found in connector"
+        }
+        
+        if 'ml_predictor' in sys.modules:
+            del sys.modules['ml_predictor']
+        
+        from ml_predictor import predict
+        result = predict("P0562", "Water found in connector", 12.5)
+        
+        mock_retry.assert_called_once()
+        assert result["decision_engine"] == "LLM"
