@@ -16,7 +16,7 @@ load_dotenv()
 
 # Load predictor (trains model on first import if no pickle exists)
 #from ml_predictor import predict as ml_predict
-from ml_predictor_DecisionTree import predict as ml_predict
+from ml_predictor import predict as ml_predict
 
 app = FastAPI(title="TRACE Backend API", version="2.0")
 
