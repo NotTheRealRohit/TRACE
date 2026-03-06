@@ -232,6 +232,52 @@ def predict(fault_code: str, technician_notes: str, voltage: float) -> dict:
     notes = (technician_notes or "").strip()
     v     = float(voltage) if voltage is not None else None
 
+    # 0. LLM-powered note analysis (new)
+    llm_result = None
+    if notes and len(notes.strip()) > 5:
+        try:
+            from llm_client import categorize_notes
+            llm_result = categorize_notes(notes, fc, v)
+        except Exception as LLM_ERROR:
+            print(f"[TRACE] LLM call failed: {LLM_ERROR}, falling back to rules")
+            llm_result = None
+
+    # 0b. If LLM succeeded, map to response
+    if llm_result:
+        category = llm_result["category"]
+        category_to_rule = {
+            "moisture_damage": "moisture",
+            "physical_damage": "physical_damage", 
+            "ntf": "ntf",
+            "electrical_issue": "low_voltage" if (v is not None and v < 11.0) else "over_voltage" if (v is not None and v > 16.0) else None,
+            "engine_symptom": "p_code_engine",
+            "communication_fault": "u_code",
+        }
+        
+        matched_rule_id = category_to_rule.get(category)
+        if matched_rule_id:
+            for rule in RULES:
+                if rule["id"] == matched_rule_id:
+                    return {
+                        "status": rule["status"],
+                        "failure_analysis": llm_result["failure_analysis"],
+                        "warranty_decision": rule["warranty_decision"],
+                        "confidence": round(llm_result["confidence"] * 100, 1),
+                        "reason": f"LLM categorization: {llm_result['reasoning']}",
+                        "matched_complaint": match_complaint(notes),
+                        "decision_engine": "LLM",
+                    }
+        
+        return {
+            "status": "Needs Manual Review",
+            "failure_analysis": llm_result["failure_analysis"],
+            "warranty_decision": "According to Specification",
+            "confidence": round(llm_result["confidence"] * 100, 1),
+            "reason": f"LLM categorization: {llm_result['reasoning']}",
+            "matched_complaint": match_complaint(notes),
+            "decision_engine": "LLM",
+        }
+
     # 1. Rule engine
     for rule in RULES:
         try:
