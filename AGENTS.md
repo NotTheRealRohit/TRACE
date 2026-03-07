@@ -13,18 +13,22 @@
 ```
 /
 ├── backend/                 # FastAPI application
-│   ├── main.py              # API endpoints
+│   ├── main.py              # API endpoints (v2.0)
 │   ├── ml_predictor.py      # ML predictor (RandomForest) with LLM integration
 │   ├── ml_predictor_DecisionTree.py  # Alternative ML model
 │   ├── llm_client.py        # OpenRouter LLM client for note categorization
+│   ├── logging_config.py    # Centralized logging configuration
 │   ├── requirements.txt    # Python dependencies
 │   ├── synthetic_warranty_claims_v2.csv  # Training dataset (12K rows)
 │   ├── trace_models.pkl     # Trained models (generated)
+│   ├── .env                 # Environment variables (API keys)
+│   ├── .env.example         # Example environment template
 │   ├── backup/              # Backup of previous versions
 │   └── tests/               # Unit and integration tests
 ├── frontend/
 │   └── index.html           # Single-page frontend
 ├── docker-compose.yml       # Full stack deployment
+├── .opencode/               # OpenCode configuration and agents
 └── AGENTS.md               # This file
 ```
 
@@ -46,7 +50,7 @@ This project uses **pyenv** for Python version management. Some commands may req
 **Installation:**
 ```bash
 # Install linting tools (if not already installed)
-pip install ruff black isort pytest
+pip install ruff black isort pytest python-dotenv
 ```
 
 ### Backend
@@ -73,6 +77,8 @@ uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 | `OPENROUTER_API_KEY` | Yes (for LLM features) | API key for OpenRouter LLM service |
 | `LOG_LEVEL` | No | Logging level (default: INFO) |
 
+**Note:** Create a `.env` file in `backend/` directory with your API keys. See `.env.example` for the template.
+
 ### Run Single Test / Smoke Test
 
 ```bash
@@ -91,6 +97,17 @@ python3 -m pytest -k "test_name"
 
 # Run with verbose output
 python3 -m pytest -v
+
+# Run logging-specific tests
+python3 -m pytest backend/tests/test_logging_config.py -v
+python3 -m pytest backend/tests/test_ml_predictor_logging.py -v
+python3 -m pytest backend/tests/test_main_logging.py -v
+python3 -m pytest backend/tests/test_llm_client_logging.py -v
+
+# Run core functionality tests
+python3 -m pytest backend/tests/test_ml_predictor.py -v
+python3 -m pytest backend/tests/test_llm_client.py -v
+python3 -m pytest backend/tests/test_e2e.py -v
 ```
 
 ### API Testing
@@ -310,6 +327,27 @@ python3 -c "from ml_predictor import train_and_save; train_and_save()"
 ```
 
 Or simply delete `trace_models.pkl` and restart the server — it auto-trains on startup.
+
+### Using Logging
+
+Import and use the logging configuration in any module:
+
+```python
+from logging_config import setup_logging, get_logger, DecisionLogger
+
+# Initialize logging at application startup
+setup_logging()  # Uses LOG_LEVEL env var, defaults to INFO
+
+# Get a logger for your module
+logger = get_logger("trace.module")
+
+# Use DecisionLogger for structured logging
+decision_logger = DecisionLogger(logger)
+decision_logger.log_stage(1, "Processing", fault_code="P0562")
+decision_logger.log_decision("ML", {"status": "Approved"}, confidence=85.0)
+```
+
+**Log Format:** `%(asctime)s [%(levelname)s] %(name)s %(filename)s:%(funcName)s:%(lineno)d - %(message)s`
 
 ### LLM Integration Architecture
 
