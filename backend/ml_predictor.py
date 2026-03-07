@@ -230,131 +230,289 @@ def load_models():
 _bundle = None
 
 
-def predict(fault_code: str, technician_notes: str, voltage: float) -> dict:
+def run_rules(fault_code: str, notes: str, voltage: float) -> dict | None:
+    """
+    Run the rule engine against the claim inputs.
+
+    Args:
+        fault_code: DTC code(s)
+        notes: Technician's free-text notes
+        voltage: Measured voltage reading
+
+    Returns:
+        dict with keys: rule_id, status, warranty_decision, rule_confidence, failure_analysis, reason, rule_fired
+        None if no rule matches
+    """
+    for rule in RULES:
+        try:
+            if rule["match"](fault_code, notes, voltage):
+                reason = rule["reason"]
+                if "{v:.1f}" in reason and voltage is not None:
+                    reason = reason.replace("{v:.1f}", f"{voltage:.1f}")
+                return {
+                    "rule_id": rule["id"],
+                    "status": rule["status"],
+                    "warranty_decision": rule["warranty_decision"],
+                    "rule_confidence": rule["confidence"],
+                    "failure_analysis": rule["failure_analysis"],
+                    "reason": reason,
+                    "rule_fired": True,
+                }
+        except Exception:
+            continue
+    return {"rule_fired": False}
+
+
+def run_ml(features: dict) -> dict:
+    """
+    Run ML scoring on the extracted features.
+
+    Args:
+        features: dict with keys: customer_complaint, dtc_text, dtc_count, voltage, has_P, has_U, has_C, has_B
+
+    Returns:
+        dict with keys: ml_warranty_decision, ml_failure_analysis, fa_prob, wd_prob, ml_confidence
+    """
     global _bundle
     if _bundle is None:
         _bundle = load_models()
 
-    fc    = (fault_code or "").strip()
-    notes = (technician_notes or "").strip()
-    v     = float(voltage) if voltage is not None else None
-
-    # 0. LLM-powered note analysis (new)
-    llm_result = None
-    if notes and len(notes.strip()) > 5:
-        try:
-            from llm_client import categorize_notes_with_retry
-            llm_result = categorize_notes_with_retry(notes, fc, v)
-        except Exception as LLM_ERROR:
-            print(f"[TRACE] LLM call failed: {LLM_ERROR}, falling back to rules")
-            llm_result = None
-
-    # 0b. If LLM succeeded, map to response
-    if llm_result:
-        category = llm_result["category"]
-        category_to_rule = {
-            "moisture_damage": "moisture",
-            "physical_damage": "physical_damage", 
-            "ntf": "ntf",
-            "electrical_issue": "low_voltage" if (v is not None and v < 11.0) else "over_voltage" if (v is not None and v > 16.0) else None,
-            "engine_symptom": "p_code_engine",
-            "communication_fault": "u_code",
-        }
-        
-        matched_rule_id = category_to_rule.get(category)
-        if matched_rule_id:
-            for rule in RULES:
-                if rule["id"] == matched_rule_id:
-                    return {
-                        "status": rule["status"],
-                        "failure_analysis": llm_result["failure_analysis"],
-                        "warranty_decision": rule["warranty_decision"],
-                        "confidence": round(llm_result["confidence"] * 100, 1),
-                        "reason": f"LLM categorization: {llm_result['reasoning']}",
-                        "matched_complaint": match_complaint(notes),
-                        "decision_engine": "LLM",
-                    }
-        
-        return {
-            "status": "Needs Manual Review",
-            "failure_analysis": llm_result["failure_analysis"],
-            "warranty_decision": "According to Specification",
-            "confidence": round(llm_result["confidence"] * 100, 1),
-            "reason": f"LLM categorization: {llm_result['reasoning']}",
-            "matched_complaint": match_complaint(notes),
-            "decision_engine": "LLM",
-        }
-
-    # 1. Rule engine
-    for rule in RULES:
-        try:
-            if rule["match"](fc, notes, v):
-                reason = rule["reason"]
-                if "{v:.1f}" in reason and v is not None:
-                    reason = reason.replace("{v:.1f}", f"{v:.1f}")
-                return {
-                    "status":            rule["status"],
-                    "failure_analysis":  rule["failure_analysis"],
-                    "warranty_decision": rule["warranty_decision"],
-                    "confidence":        rule["confidence"],
-                    "reason":            reason,
-                    "matched_complaint": match_complaint(notes),
-                    "decision_engine":   "Rule-based",
-                }
-        except Exception:
-            continue
-
-    # 2. ML fallback
-    matched_complaint = match_complaint(notes)
-    dtc_f  = extract_dtc_features(fc)
     df_row = pd.DataFrame([{
-        "Customer Complaint": matched_complaint,   # must match OHE training column name
-        "dtc_text":  dtc_f["dtc_text"],
-        "dtc_count": dtc_f["dtc_count"],
-        "has_P":     dtc_f["has_P"],
-        "has_U":     dtc_f["has_U"],
-        "has_C":     dtc_f["has_C"],
-        "has_B":     dtc_f["has_B"],
+        "Customer Complaint": features.get("customer_complaint", "OBD Light ON"),
+        "dtc_text": features.get("dtc_text", ""),
+        "dtc_count": features.get("dtc_count", 0),
+        "has_P": features.get("has_P", 0),
+        "has_U": features.get("has_U", 0),
+        "has_C": features.get("has_C", 0),
+        "has_B": features.get("has_B", 0),
     }])
 
     from scipy.sparse import csr_matrix as _csr
     X_c = _bundle["ohe"].transform(df_row[["Customer Complaint"]])
     X_d = _bundle["tfidf_d"].transform(df_row["dtc_text"])
-    X_n = df_row[["dtc_count","has_P","has_U","has_C","has_B"]].values
+    X_n = df_row[["dtc_count", "has_P", "has_U", "has_C", "has_B"]].values
     X_v = _bundle["scaler"].transform(
-              pd.DataFrame([[v if v is not None else 12.5]], columns=["Voltage"])
-          )   # use DataFrame with column name to suppress sklearn warning
-    X   = hstack([X_c, X_d, _csr(X_n), _csr(X_v)])
+        pd.DataFrame([[features.get("voltage", 12.5)]], columns=["Voltage"])
+    )
+    X = hstack([X_c, X_d, _csr(X_n), _csr(X_v)])
 
-    fa_idx  = _bundle["clf_fa"].predict(X)[0]
-    wd_idx  = _bundle["clf_wd"].predict(X)[0]
+    fa_idx = _bundle["clf_fa"].predict(X)[0]
+    wd_idx = _bundle["clf_wd"].predict(X)[0]
     fa_prob = float(np.max(_bundle["clf_fa"].predict_proba(X)[0]))
     wd_prob = float(np.max(_bundle["clf_wd"].predict_proba(X)[0]))
 
-    failure_analysis  = _bundle["le_fa"].inverse_transform([fa_idx])[0]
-    warranty_decision = _bundle["le_wd"].inverse_transform([wd_idx])[0]
-    confidence        = round(min(98.0, max(50.0, (fa_prob * wd_prob) ** 0.5 * 100)), 1)
-
-    status_map = {
-        "Production Failure":         "Approved",
-        "According to Specification": "Approved",
-        "Customer Failure":           "Rejected",
-    }
-    status = status_map.get(warranty_decision, "Needs Manual Review")
-
-    dtc_note = f"DTC codes: {fc}. " if dtc_f["dtc_count"] > 0 else "No valid DTC codes provided. "
-    reason   = (f"{dtc_note}Complaint matched to '{matched_complaint}'. "
-                f"ML model predicts root cause: {failure_analysis}.")
+    ml_failure_analysis = _bundle["le_fa"].inverse_transform([fa_idx])[0]
+    ml_warranty_decision = _bundle["le_wd"].inverse_transform([wd_idx])[0]
+    ml_confidence = round(min(98.0, max(50.0, (fa_prob * wd_prob) ** 0.5 * 100)), 1)
 
     return {
-        "status":            status,
-        "failure_analysis":  failure_analysis,
-        "warranty_decision": warranty_decision,
-        "confidence":        confidence,
-        "reason":            reason,
-        "matched_complaint": matched_complaint,
-        "decision_engine":   "ML model",
+        "ml_warranty_decision": ml_warranty_decision,
+        "ml_failure_analysis": ml_failure_analysis,
+        "fa_prob": fa_prob,
+        "wd_prob": wd_prob,
+        "ml_confidence": ml_confidence,
     }
+
+
+CONFIDENCE_THRESHOLD_FIRM = 85.0
+CONFIDENCE_THRESHOLD_MANUAL = 65.0
+AGREEMENT_BONUS = 5.0
+DISAGREEMENT_GAP_THRESHOLD = 20.0
+WEAK_INPUT_PENALTY = 0.85
+
+RULE_WEIGHT_AGREE = 0.7
+ML_WEIGHT_AGREE = 0.3
+RULE_WEIGHT_DISAGREE = 0.6
+ML_WEIGHT_DISAGREE = 0.1
+
+
+def combine_scores(
+    rule_result: dict | None,
+    ml_result: dict,
+    llm_stage1: dict | None,
+) -> dict:
+    """
+    Combine rule engine and ML results into a final decision.
+
+    Args:
+        rule_result: Output from run_rules()
+        ml_result: Output from run_ml()
+        llm_stage1: Output from understand_claim()
+
+    Returns:
+        dict with combined decision, confidence, and metadata
+    """
+    rule_fired = rule_result is not None and rule_result.get("rule_fired", False)
+
+    if rule_fired:
+        rule_conf = rule_result.get("rule_confidence", 0)
+        rule_wd = rule_result.get("warranty_decision", "")
+        ml_wd = ml_result.get("ml_warranty_decision", "")
+        agreement = rule_wd == ml_wd
+    else:
+        rule_conf = 0
+        agreement = False
+
+    ml_conf = ml_result.get("ml_confidence", 50.0)
+
+    if rule_fired and agreement:
+        combined_confidence = (
+            RULE_WEIGHT_AGREE * rule_conf
+            + ML_WEIGHT_AGREE * ml_conf
+            + AGREEMENT_BONUS
+        )
+    elif rule_fired and not agreement:
+        combined_confidence = (
+            RULE_WEIGHT_DISAGREE * rule_conf
+            + ML_WEIGHT_DISAGREE * ml_conf
+        )
+    else:
+        combined_confidence = ml_conf
+
+    if llm_stage1 is not None and llm_stage1.get("category") == "other" and not rule_fired:
+        combined_confidence *= WEAK_INPUT_PENALTY
+
+    combined_confidence = round(min(98.0, max(0.0, combined_confidence)), 1)
+
+    if rule_fired and not agreement:
+        gap = abs(rule_conf - ml_conf)
+        if gap <= DISAGREEMENT_GAP_THRESHOLD:
+            status = rule_result.get("status", "Needs Manual Review")
+        elif combined_confidence >= CONFIDENCE_THRESHOLD_FIRM:
+            status = rule_result.get("status", "Needs Manual Review")
+        elif combined_confidence >= CONFIDENCE_THRESHOLD_MANUAL:
+            status = rule_result.get("status", "Needs Manual Review")
+        else:
+            status = "Needs Manual Review"
+    elif rule_fired and agreement:
+        if combined_confidence >= CONFIDENCE_THRESHOLD_FIRM:
+            status = rule_result.get("status", "Needs Manual Review")
+        elif combined_confidence >= CONFIDENCE_THRESHOLD_MANUAL:
+            status = rule_result.get("status", "Needs Manual Review")
+        else:
+            status = "Needs Manual Review"
+    else:
+        if combined_confidence >= CONFIDENCE_THRESHOLD_MANUAL:
+            status_map = {
+                "Production Failure": "Approved",
+                "According to Specification": "Approved",
+                "Customer Failure": "Rejected",
+            }
+            status = status_map.get(ml_result.get("ml_warranty_decision", ""), "Needs Manual Review")
+        else:
+            status = "Needs Manual Review"
+
+    if rule_fired:
+        warranty_decision = rule_result.get("warranty_decision", ml_result.get("ml_warranty_decision", ""))
+    else:
+        warranty_decision = ml_result.get("ml_warranty_decision", "")
+
+    if llm_stage1 is not None and rule_fired:
+        decision_engine = "LLM+Rule+ML"
+    elif rule_fired:
+        decision_engine = "Rule+ML"
+    else:
+        decision_engine = "ML"
+
+    return {
+        "status": status,
+        "warranty_decision": warranty_decision,
+        "combined_confidence": combined_confidence,
+        "agreement": agreement,
+        "rule_fired": rule_fired,
+        "rule_id": rule_result.get("rule_id") if rule_fired else None,
+        "ml_warranty_decision": ml_result.get("ml_warranty_decision", ""),
+        "ml_failure_analysis": ml_result.get("ml_failure_analysis", ""),
+        "llm_failure_analysis": llm_stage1.get("failure_analysis") if llm_stage1 else None,
+        "decision_engine": decision_engine,
+    }
+
+
+def assemble_output_from_fields(combined: dict, features: dict) -> dict:
+    """
+    Assemble final output from combined results (fallback when LLM formatter fails).
+    """
+    return {
+        "status": combined["status"],
+        "failure_analysis": (
+            combined.get("llm_failure_analysis")
+            or combined["ml_failure_analysis"]
+        ),
+        "warranty_decision": combined["warranty_decision"],
+        "confidence": combined["combined_confidence"],
+        "reason": (
+            f"Rule '{combined['rule_id']}' fired. "
+            f"ML {'agrees' if combined['agreement'] else 'disagrees'} "
+            f"with confidence {combined['combined_confidence']}%."
+            if combined["rule_fired"]
+            else f"No rule matched. ML predicts {combined['ml_warranty_decision']} "
+                 f"with confidence {combined['combined_confidence']}%."
+        ),
+        "matched_complaint": features.get("customer_complaint", "OBD Light ON"),
+        "decision_engine": combined["decision_engine"],
+    }
+
+
+def predict(fault_code: str, technician_notes: str, voltage: float) -> dict:
+    global _bundle
+    if _bundle is None:
+        _bundle = load_models()
+
+    fc = (fault_code or "").strip()
+    notes = (technician_notes or "").strip()
+    v = float(voltage) if voltage is not None else None
+
+    api_key_available = bool(os.getenv("OPENROUTER_API_KEY"))
+    llm_available = api_key_available and len(notes) > 5
+
+    llm_stage1 = None
+    if llm_available:
+        try:
+            from llm_client import understand_claim_with_retry
+            llm_stage1 = understand_claim_with_retry(notes, fc, v)
+        except Exception as e:
+            print(f"[TRACE] Stage 1 LLM failed: {e}")
+
+    rule_result = run_rules(fc, notes, v)
+
+    features = None
+    if llm_available:
+        try:
+            from llm_client import translate_to_ml_features
+            category = llm_stage1["category"] if llm_stage1 else "other"
+            features = translate_to_ml_features(notes, fc, v, category)
+        except Exception as e:
+            print(f"[TRACE] Stage 3 LLM failed: {e}")
+
+    if features is None:
+        dtc_f = extract_dtc_features(fc)
+        features = {
+            "customer_complaint": match_complaint(notes),
+            "dtc_text": dtc_f["dtc_text"],
+            "dtc_count": dtc_f["dtc_count"],
+            "voltage": v if v is not None else 12.5,
+            "has_P": dtc_f["has_P"],
+            "has_U": dtc_f["has_U"],
+            "has_C": dtc_f["has_C"],
+            "has_B": dtc_f["has_B"],
+        }
+
+    ml_result = run_ml(features)
+
+    combined = combine_scores(rule_result, ml_result, llm_stage1)
+
+    output = None
+    if llm_available:
+        try:
+            from llm_client import format_output
+            output = format_output(combined, features)
+        except Exception as e:
+            print(f"[TRACE] Stage 6 LLM failed: {e}")
+
+    if output is None:
+        output = assemble_output_from_fields(combined, features)
+
+    return output
 
 
 if __name__ == "__main__":

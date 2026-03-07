@@ -14,11 +14,14 @@
 /
 ├── backend/                 # FastAPI application
 │   ├── main.py              # API endpoints
-│   ├── ml_predictor.py      # ML predictor (RandomForest)
+│   ├── ml_predictor.py      # ML predictor (RandomForest) with LLM integration
 │   ├── ml_predictor_DecisionTree.py  # Alternative ML model
-│   ├── requirements.txt     # Python dependencies
-│   ├── Warranty_Dataset_2019_2024_12000.csv
-│   └── trace_models.pkl     # Trained models (generated)
+│   ├── llm_client.py        # OpenRouter LLM client for note categorization
+│   ├── requirements.txt    # Python dependencies
+│   ├── synthetic_warranty_claims_v2.csv  # Training dataset (12K rows)
+│   ├── trace_models.pkl     # Trained models (generated)
+│   ├── backup/              # Backup of previous versions
+│   └── tests/               # Unit and integration tests
 ├── frontend/
 │   └── index.html           # Single-page frontend
 ├── docker-compose.yml       # Full stack deployment
@@ -53,12 +56,22 @@ pip install ruff black isort pytest
 cd backend
 pip install -r requirements.txt
 
+# Set OpenRouter API key (required for LLM features)
+export OPENROUTER_API_KEY="your-api-key-here"
+
 # Run the API server (development)
 uvicorn main:app --reload --port 8000
 
 # Run with hot reload
 uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```
+
+### Environment Variables
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `OPENROUTER_API_KEY` | Yes (for LLM features) | API key for OpenRouter LLM service |
+| `LOG_LEVEL` | No | Logging level (default: INFO) |
 
 ### Run Single Test / Smoke Test
 
@@ -297,3 +310,62 @@ python3 -c "from ml_predictor import train_and_save; train_and_save()"
 ```
 
 Or simply delete `trace_models.pkl` and restart the server — it auto-trains on startup.
+
+### LLM Integration Architecture
+
+The prediction pipeline uses a 6-stage hybrid approach:
+
+```
+Input (fault_code, technician_notes, voltage)
+  │
+  ▼
+[STAGE 1] LLM — Semantic Understanding         llm_client.py :: understand_claim()
+  │
+  ▼
+[STAGE 2] Rule Engine — Structured Decision    ml_predictor.py :: run_rules()
+  │
+  ▼
+[STAGE 3] LLM — ML Feature Translation         llm_client.py :: translate_to_ml_features()
+  │                                             (fallback: match_complaint() + extract_dtc_features())
+  ▼
+[STAGE 4] ML — Always-on Confidence Scoring    ml_predictor.py :: run_ml()
+  │
+  ▼
+[STAGE 5] Score Combiner                       ml_predictor.py :: combine_scores()
+  │
+  ▼
+[STAGE 6] LLM — Output Formatter               llm_client.py :: format_output()
+  │                                             (fallback: assemble_output_from_fields())
+  ▼
+ClaimResponse JSON  (schema unchanged)
+```
+
+**Stage Details:**
+
+1. **STAGE 1 - LLM Understanding** (`llm_client.py::understand_claim()`)
+   - Analyzes claim semantically via OpenRouter
+   - Categorizes: moisture_damage, physical_damage, ntf, electrical_issue, engine_symptom, communication_fault, other
+   - Returns: category, normalized_complaint, severity, failure_analysis, reasoning, confidence
+
+2. **STAGE 2 - Rule Engine** (`ml_predictor.py::run_rules()`)
+   - Voltage thresholds (over-voltage >16V, under-voltage <11V)
+   - Keyword detection (moisture, physical damage, NTF)
+   - DTC prefix analysis (P=Powertrain, U=Network, C=Chassis, B=Body)
+
+3. **STAGE 3 - Feature Translation** (`llm_client.py::translate_to_ml_features()`)
+   - Fallback: `match_complaint()` + `extract_dtc_features()` when LLM unavailable
+   - Extracts: customer_complaint, dtc_codes, dtc_text, dtc_count, voltage, has_P/U/C/B
+
+4. **STAGE 4 - ML Scoring** (`ml_predictor.py::run_ml()`)
+   - RandomForest classifier (always runs)
+   - Returns: ml_warranty_decision, ml_failure_analysis, ml_confidence
+
+5. **STAGE 5 - Score Combiner** (`ml_predictor.py::combine_scores()`)
+   - Blends rule + ML results
+   - Sets decision_engine: "LLM+Rule+ML", "Rule+ML", or "ML"
+
+6. **STAGE 6 - Output Formatter** (`llm_client.py::format_output()`)
+   - Fallback: `assemble_output_from_fields()` when LLM unavailable
+   - Returns final ClaimResponse JSON
+
+**API Key:** Stored in `backend/.env` as `OPENROUTER_API_KEY`
