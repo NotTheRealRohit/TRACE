@@ -2,3 +2,5 @@
 backend/.env
 venv
 backend/__pycache__/
+backend/tests
+backend/trace_models.pkl
