@@ -1,0 +1,77 @@
+import random
+import csv
+from datetime import timedelta, date
+
+def generate_warranty_dataset(filename="synthetic_warranty_claims.csv", num_rows=12000):
+    customers = ["Ashok Leyland", "Honda", "M&M", "TATA", "Toyota", "Kia", "Hyundai"]
+    complaints = ["Engine jerking during acceleration", "Starting Problem", "High fuel consumption",
+                  "OBD Light ON", "Vehicle not starting", "Low pickup", "Engine overheating",
+                  "Rough idling", "Brake warning light ON"]
+    p_dtc = ["P0301", "P0302", "P0455", "P0562", "P0171", "P0420", "P0087", "P0113"]
+    u_dtc = ["U0100", "U0073", "U0155"]
+    c_dtc = ["C0045", "C0031", "C0265"]
+    b_dtc = ["B1234", "B1031", "B2AAA"]
+    suppliers = ["Bosch", "Valeo", "Hanon", "Delphi", "STM"]
+
+    with open(filename, 'w', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow(["Customer", "Year", "Date", "QC_Number", "Customer Complaint",
+                         "DTC", "Voltage", "Failure Analysis", "Warranty Decision", "Supplier"])
+
+        for i in range(1, num_rows + 1):
+            year = random.randint(2019, 2024)
+            dt = date(year, 1, 1) + timedelta(days=random.randint(0, 364))
+            qc_number = f"QC-{year}-{i:04d}"
+            customer = random.choice(customers)
+
+            # Rule E: Class Balance Target
+            rand_val = random.random()
+            if rand_val < 0.40:
+                decision = "Production Failure"
+                supplier = random.choice(["Bosch", "STM", "Bosch", "STM", "Valeo", "Delphi"]) 
+            elif rand_val < 0.75:
+                decision = "Customer Failure"
+                supplier = random.choice(["Hanon", "Hanon", "Bosch", "Valeo", "Delphi", "STM"]) 
+            else:
+                decision = "According to Specification"
+                supplier = random.choice(suppliers)
+
+            failure, dtc, complaint, voltage = "", "NA", "", 12.0
+
+            if decision == "Customer Failure":
+                failure = random.choice(["Track burnt due to EOS", "ASIC CJ327 failure due to EOS", "Sensor short due to moisture"])
+                if failure == "Sensor short due to moisture":
+                    voltage = round(random.uniform(11.5, 14.8), 1)
+                    complaint = "Engine jerking during acceleration" if random.random() < 0.8 else random.choice(complaints)
+                else:
+                    voltage = round(random.uniform(16.5, 20.0), 1)
+                    if failure == "Track burnt due to EOS":
+                        complaint = "Engine overheating" if random.random() < 0.8 else random.choice(complaints)
+                    else:
+                        complaint = random.choice(["Engine jerking during acceleration", "High fuel consumption", "Low pickup", "Rough idling"]) if random.random() < 0.8 else random.choice(complaints)
+
+            elif decision == "Production Failure":
+                failure = random.choice(["controller failure due to supplier production failure", "Connector damage", "Track burnt due to EOS", "ASIC CJ327 failure due to EOS"])
+                if failure == "controller failure due to supplier production failure":
+                    voltage = round(random.uniform(9.0, 10.9), 1) if random.random() < 0.3 else round(random.uniform(11.5, 14.8), 1)
+                    dtc = random.choice(u_dtc) if voltage >= 11.0 else random.choice(u_dtc + p_dtc)
+                    complaint = random.choice(["Starting Problem", "Vehicle not starting"]) if random.random() < 0.8 else random.choice(complaints)
+                elif failure == "Connector damage":
+                    voltage = round(random.uniform(11.5, 15.2), 1) if random.random() < 0.05 else round(random.uniform(11.5, 14.8), 1)
+                    dtc = random.choice(c_dtc + b_dtc)
+                    complaint = "Brake warning light ON" if random.random() < 0.8 else random.choice(complaints)
+                else: # EOS Production Failure (Must be normal voltage > 13.5)
+                    voltage = round(random.uniform(13.6, 14.8), 1)
+                    dtc = random.choice(p_dtc)
+                    complaint = "Engine overheating" if failure == "Track burnt due to EOS" else random.choice(["Engine jerking during acceleration", "High fuel consumption", "Low pickup", "Rough idling"])
+
+            elif decision == "According to Specification":
+                failure = "NTF"
+                voltage = round(random.uniform(11.5, 14.8), 1)
+                complaint = "OBD Light ON" if random.random() < 0.8 else random.choice(complaints)
+
+            writer.writerow([customer, year, dt.strftime("%Y-%m-%d"), qc_number, complaint, dtc, voltage, failure, decision, supplier])
+
+if __name__ == "__main__":
+    generate_warranty_dataset()
+    print("Successfully generated synthetic_warranty_claims.csv with 12,000 rows.")
