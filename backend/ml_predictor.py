@@ -28,6 +28,13 @@ from   sklearn.metrics import accuracy_score
 from   sklearn.feature_extraction.text import TfidfVectorizer   # kept for DTC text
 from   sklearn.preprocessing import OneHotEncoder, StandardScaler
 
+import sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from logging_config import get_logger, DecisionLogger
+
+logger = get_logger("trace.ml_predictor")
+decision_logger = DecisionLogger(logger)
+
 warnings.filterwarnings("ignore")
 
 BASE_DIR   = os.path.dirname(os.path.abspath(__file__))
@@ -173,7 +180,7 @@ def match_complaint(user_text: str) -> str:
 
 
 def train_and_save():
-    print("[TRACE] Loading dataset ...")
+    logger.info("[INIT] Loading dataset from %s", DATA_PATH)
     df = pd.read_csv(DATA_PATH)
     df["DTC"]                = df["DTC"].fillna("").replace("none", "")
     df["Customer Complaint"] = df["Customer Complaint"].fillna("OBD Light ON")
@@ -201,7 +208,7 @@ def train_and_save():
     X_tr, X_te, yfa_tr, yfa_te, ywd_tr, ywd_te = train_test_split(
         X, y_fa, y_wd, test_size=0.2, random_state=42)
 
-    print("[TRACE] Training models ...")
+    logger.info("[INIT] Training ML models...")
     clf_fa = RandomForestClassifier(n_estimators=200, random_state=42, n_jobs=-1)
     clf_fa.fit(X_tr, yfa_tr)
     clf_wd = RandomForestClassifier(n_estimators=200, random_state=42, n_jobs=-1)
@@ -209,14 +216,14 @@ def train_and_save():
 
     fa_acc = accuracy_score(yfa_te, clf_fa.predict(X_te))
     wd_acc = accuracy_score(ywd_te, clf_wd.predict(X_te))
-    print(f"  Failure Analysis accuracy : {fa_acc:.3f}  (dataset is synthetically balanced)")
-    print(f"  Warranty Decision accuracy: {wd_acc:.3f}")
+    logger.info("Failure Analysis accuracy: %.3f (dataset is synthetically balanced)", fa_acc)
+    logger.info("Warranty Decision accuracy: %.3f", wd_acc)
 
     bundle = dict(clf_fa=clf_fa, clf_wd=clf_wd, le_fa=le_fa, le_wd=le_wd,
                   ohe=ohe, tfidf_d=tfidf_d, scaler=scaler)
     with open(MODEL_PATH, "wb") as f:
         pickle.dump(bundle, f)
-    print(f"[TRACE] Models saved -> {MODEL_PATH}")
+    logger.info("[INIT] Models saved to %s", MODEL_PATH)
     return bundle
 
 
@@ -266,6 +273,13 @@ def run_rules(fault_code: str, notes: str, voltage: float) -> dict | None:
 def run_ml(features: dict) -> dict:
     """
     Run ML scoring on the extracted features.
+
+    Uses the trained RandomForest classifiers to predict:
+    - Failure analysis (root cause classification)
+    - Warranty decision (Production/Customer/According to Spec)
+
+    Confidence is computed as the geometric mean of both predictions' probabilities,
+    capped between 50-98%.
 
     Args:
         features: dict with keys: customer_complaint, dtc_text, dtc_count, voltage, has_P, has_U, has_C, has_B
@@ -333,6 +347,13 @@ def combine_scores(
 ) -> dict:
     """
     Combine rule engine and ML results into a final decision.
+
+    Logic:
+    1. If rule fires and agrees with ML: apply agreement bonus
+    2. If rule fires but disagrees: use threshold-based fallback
+    3. If no rule fires: use ML result with possible penalty
+
+    Weights defined at module level control the blend.
 
     Args:
         rule_result: Output from run_rules()
@@ -457,10 +478,14 @@ def predict(fault_code: str, technician_notes: str, voltage: float) -> dict:
     global _bundle
     if _bundle is None:
         _bundle = load_models()
+        logger.info("[INIT] Models loaded")
 
     fc = (fault_code or "").strip()
     notes = (technician_notes or "").strip()
     v = float(voltage) if voltage is not None else None
+
+    logger.info("INPUT predict | fault_code=%s voltage=%s notes_len=%d", 
+                fc, v, len(notes))
 
     api_key_available = bool(os.getenv("OPENROUTER_API_KEY"))
     llm_available = api_key_available and len(notes) > 5
@@ -470,10 +495,16 @@ def predict(fault_code: str, technician_notes: str, voltage: float) -> dict:
         try:
             from llm_client import understand_claim_with_retry
             llm_stage1 = understand_claim_with_retry(notes, fc, v)
+            if llm_stage1:
+                decision_logger.log_decision("Stage 1 LLM", llm_stage1)
         except Exception as e:
-            print(f"[TRACE] Stage 1 LLM failed: {e}")
+            logger.warning("[STAGE 1] LLM failed, using fallback: %s", e)
 
     rule_result = run_rules(fc, notes, v)
+    if rule_result.get("rule_fired"):
+        decision_logger.log_decision("Rule Engine", rule_result)
+        logger.info("Rule fired: %s with confidence %.1f", 
+                    rule_result["rule_id"], rule_result["rule_confidence"])
 
     features = None
     if llm_available:
@@ -482,7 +513,7 @@ def predict(fault_code: str, technician_notes: str, voltage: float) -> dict:
             category = llm_stage1["category"] if llm_stage1 else "other"
             features = translate_to_ml_features(notes, fc, v, category)
         except Exception as e:
-            print(f"[TRACE] Stage 3 LLM failed: {e}")
+            logger.warning("[STAGE 3] LLM failed, using fallback: %s", e)
 
     if features is None:
         dtc_f = extract_dtc_features(fc)
@@ -498,8 +529,14 @@ def predict(fault_code: str, technician_notes: str, voltage: float) -> dict:
         }
 
     ml_result = run_ml(features)
+    decision_logger.log_decision("ML Model", {
+        "warranty_decision": ml_result["ml_warranty_decision"],
+        "failure_analysis": ml_result["ml_failure_analysis"],
+        "confidence": ml_result["ml_confidence"],
+    })
 
     combined = combine_scores(rule_result, ml_result, llm_stage1)
+    decision_logger.log_decision("Combined", combined)
 
     output = None
     if llm_available:
@@ -507,10 +544,13 @@ def predict(fault_code: str, technician_notes: str, voltage: float) -> dict:
             from llm_client import format_output
             output = format_output(combined, features)
         except Exception as e:
-            print(f"[TRACE] Stage 6 LLM failed: {e}")
+            logger.warning("[STAGE 6] LLM failed, using fallback: %s", e)
 
     if output is None:
         output = assemble_output_from_fields(combined, features)
+
+    logger.info("OUTPUT predict | status=%s confidence=%.1f engine=%s",
+                output["status"], output["confidence"], output["decision_engine"])
 
     return output
 
