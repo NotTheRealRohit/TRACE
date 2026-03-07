@@ -25,14 +25,13 @@ from   sklearn.ensemble import RandomForestClassifier
 from   sklearn.preprocessing import LabelEncoder
 from   sklearn.model_selection import train_test_split
 from   sklearn.metrics import accuracy_score
-from   sklearn.feature_extraction.text import TfidfVectorizer   # kept for DTC text
-from   sklearn.preprocessing import OneHotEncoder, StandardScaler
+from   sklearn.feature_extraction.text import TfidfVectorizer
 
 warnings.filterwarnings("ignore")
 
 BASE_DIR   = os.path.dirname(os.path.abspath(__file__))
 MODEL_PATH = os.path.join(BASE_DIR, "trace_models.pkl")
-DATA_PATH  = os.path.join(BASE_DIR, "synthetic_warranty_claims_v2.csv")
+DATA_PATH  = os.path.join(BASE_DIR, "Warranty_Dataset_2019_2024_12000.csv")
 
 KNOWN_COMPLAINTS = [
     "Engine jerking during acceleration", "Starting Problem",
@@ -175,28 +174,22 @@ def match_complaint(user_text: str) -> str:
 def train_and_save():
     print("[TRACE] Loading dataset ...")
     df = pd.read_csv(DATA_PATH)
-    df["DTC"]                = df["DTC"].fillna("").replace("none", "")
+    df["DTC"]                = df["DTC"].fillna("none")
     df["Customer Complaint"] = df["Customer Complaint"].fillna("OBD Light ON")
     df["Failure Analysis"]   = df["Failure Analysis"].fillna("NTF")
     df["Warranty Decision"]  = df["Warranty Decision"].fillna("According to Specification")
-    df["Voltage"]            = pd.to_numeric(df["Voltage"], errors="coerce").fillna(12.5)
 
     dtc_feats = pd.DataFrame(list(df["DTC"].apply(extract_dtc_features)))
 
     le_fa = LabelEncoder(); y_fa = le_fa.fit_transform(df["Failure Analysis"])
     le_wd = LabelEncoder(); y_wd = le_wd.fit_transform(df["Warranty Decision"])
 
-    ohe     = OneHotEncoder(sparse_output=True, handle_unknown="ignore")
+    tfidf_c = TfidfVectorizer(max_features=60)
     tfidf_d = TfidfVectorizer(max_features=40)
-    scaler  = StandardScaler()
-
-    X_c = ohe.fit_transform(df[["Customer Complaint"]])
+    X_c = tfidf_c.fit_transform(df["Customer Complaint"])
     X_d = tfidf_d.fit_transform(dtc_feats["dtc_text"])
     X_n = dtc_feats[["dtc_count","has_P","has_U","has_C","has_B"]].values
-    X_v = scaler.fit_transform(df[["Voltage"]])          # FIX 3 also uses this
-
-    from scipy.sparse import csr_matrix
-    X   = hstack([X_c, X_d, csr_matrix(X_n), csr_matrix(X_v)])
+    X   = hstack([X_c, X_d, X_n])
 
     X_tr, X_te, yfa_tr, yfa_te, ywd_tr, ywd_te = train_test_split(
         X, y_fa, y_wd, test_size=0.2, random_state=42)
@@ -213,7 +206,7 @@ def train_and_save():
     print(f"  Warranty Decision accuracy: {wd_acc:.3f}")
 
     bundle = dict(clf_fa=clf_fa, clf_wd=clf_wd, le_fa=le_fa, le_wd=le_wd,
-                  ohe=ohe, tfidf_d=tfidf_d, scaler=scaler)
+                  tfidf_c=tfidf_c, tfidf_d=tfidf_d)
     with open(MODEL_PATH, "wb") as f:
         pickle.dump(bundle, f)
     print(f"[TRACE] Models saved -> {MODEL_PATH}")
@@ -308,7 +301,7 @@ def predict(fault_code: str, technician_notes: str, voltage: float) -> dict:
     matched_complaint = match_complaint(notes)
     dtc_f  = extract_dtc_features(fc)
     df_row = pd.DataFrame([{
-        "Customer Complaint": matched_complaint,   # must match OHE training column name
+        "complaint": matched_complaint,
         "dtc_text":  dtc_f["dtc_text"],
         "dtc_count": dtc_f["dtc_count"],
         "has_P":     dtc_f["has_P"],
@@ -317,14 +310,10 @@ def predict(fault_code: str, technician_notes: str, voltage: float) -> dict:
         "has_B":     dtc_f["has_B"],
     }])
 
-    from scipy.sparse import csr_matrix as _csr
-    X_c = _bundle["ohe"].transform(df_row[["Customer Complaint"]])
+    X_c = _bundle["tfidf_c"].transform(df_row["complaint"])
     X_d = _bundle["tfidf_d"].transform(df_row["dtc_text"])
     X_n = df_row[["dtc_count","has_P","has_U","has_C","has_B"]].values
-    X_v = _bundle["scaler"].transform(
-              pd.DataFrame([[v if v is not None else 12.5]], columns=["Voltage"])
-          )   # use DataFrame with column name to suppress sklearn warning
-    X   = hstack([X_c, X_d, _csr(X_n), _csr(X_v)])
+    X   = hstack([X_c, X_d, X_n])
 
     fa_idx  = _bundle["clf_fa"].predict(X)[0]
     wd_idx  = _bundle["clf_wd"].predict(X)[0]
@@ -333,7 +322,7 @@ def predict(fault_code: str, technician_notes: str, voltage: float) -> dict:
 
     failure_analysis  = _bundle["le_fa"].inverse_transform([fa_idx])[0]
     warranty_decision = _bundle["le_wd"].inverse_transform([wd_idx])[0]
-    confidence        = round(min(98.0, max(50.0, (fa_prob * wd_prob) ** 0.5 * 100)), 1)
+    confidence        = round(min(72.0, (fa_prob + wd_prob) / 2 * 100), 1)
 
     status_map = {
         "Production Failure":         "Approved",
