@@ -6,17 +6,20 @@ Run:
     uvicorn main:app --reload --port 8000
 """
 
+import os
+import sys
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-import traceback
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from logging_config import get_logger
+from ml_predictor import predict as ml_predict
+
+logger = get_logger("trace.api")
 
 load_dotenv()
-
-# Load predictor (trains model on first import if no pickle exists)
-#from ml_predictor import predict as ml_predict
-from ml_predictor import predict as ml_predict
 
 app = FastAPI(title="TRACE Backend API", version="2.0")
 
@@ -62,13 +65,20 @@ def analyze_claim(claim: ClaimRequest):
     routes them through the ML predictor (hybrid rule + RandomForest),
     and returns a structured warranty decision.
     """
+    logger.info("REQUEST /analyze | fault_code=%s voltage=%s",
+                claim.fault_code, claim.voltage)
+    
     try:
         result = ml_predict(
             fault_code        = claim.fault_code,
             technician_notes  = claim.technician_notes,
             voltage           = claim.voltage,
         )
+        logger.info("RESPONSE /analyze | status=%s confidence=%.1f engine=%s",
+                    result["status"], result["confidence"], 
+                    result.get("decision_engine", "unknown"))
         return ClaimResponse(**result)
     except Exception as e:
-        traceback.print_exc()
+        logger.error("ERROR /analyze | %s: %s", type(e).__name__, str(e),
+                     exc_info=True)
         raise HTTPException(status_code=500, detail=f"Prediction error: {str(e)}")

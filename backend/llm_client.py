@@ -5,27 +5,21 @@ Handles API calls to OpenRouter for technician note categorization.
 """
 
 import os
+import sys
 import json
 import time
-import logging
 import requests
 from typing import Optional
+from logging_config import setup_logging, get_logger
 
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
 MODEL = "arcee-ai/trinity-large-preview:free"
 
-# ---------------------------------------------------------------------------
-# Logging setup
-# ---------------------------------------------------------------------------
-LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-logging.basicConfig(
-    level=LOG_LEVEL,
-    format="%(asctime)s [%(levelname)s] %(name)s - %(message)s",
-    datefmt="%Y-%m-%dT%H:%M:%S",
-)
-logger = logging.getLogger("trace.llm_client")
-# ---------------------------------------------------------------------------
+setup_logging()
+logger = get_logger("trace.llm_client")
+
 
 
 def get_api_key() -> str:
@@ -208,7 +202,7 @@ def format_output(combined: dict, features: dict, timeout: int = 30) -> dict | N
     """
     api_key = get_api_key()
 
-    logger.info("Formatting output | decision_engine=%s", combined.get("decision_engine", "unknown"))
+    logger.info("[STAGE 6] LLM Output Formatting | decision_engine=%s", combined.get("decision_engine", "unknown"))
 
     prompt = FORMAT_OUTPUT_PROMPT.format(
         combined_json=json.dumps(combined),
@@ -317,7 +311,7 @@ def understand_claim(notes: str, dtc_code: str, voltage: Optional[float], timeou
     api_key = get_api_key()
 
     logger.info(
-        "Understanding claim | dtc=%s voltage=%s notes_len=%d",
+        "[STAGE 1] LLM Understanding | dtc=%s voltage=%s notes_len=%d",
         dtc_code or "none",
         voltage if voltage is not None else "N/A",
         len(notes),
@@ -490,7 +484,7 @@ def translate_to_ml_features(
     api_key = get_api_key()
 
     logger.info(
-        "Translating to ML features | dtc=%s category=%s",
+        "[STAGE 3] LLM Feature Translation | dtc=%s category=%s",
         dtc_code or "none",
         llm_category,
     )
