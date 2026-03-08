@@ -23,19 +23,19 @@ DATA-LEAKAGE WARNING
 ======================================================================
 FAILURE ANALYSIS CLASSIFIER (6 classes)  [test set — leaky, see above]
 ======================================================================
-Accuracy:             0.9807
-Precision (weighted): 0.9811
-Precision (macro):    0.9799
-Recall (weighted):    0.9807
-Recall (macro):       0.9837
-F1 (weighted):        0.9808
-F1 (macro):           0.9817
+Accuracy:             0.9801
+Precision (weighted): 0.9805
+Precision (macro):    0.9794
+Recall (weighted):    0.9801
+Recall (macro):       0.9831
+F1 (weighted):        0.9802
+F1 (macro):           0.9811
 
 Confusion Matrix:
-[[1174    0    0    0    0    0]
+[[1173    0    1    0    0    0]
  [   0 1503    0    0    0    0]
- [   0    0 2947  123    0    0]
- [   0    0   70 1140    0    0]
+ [   0    0 2944  126    0    0]
+ [   0    0   72 1138    0    0]
  [   0    0    0    0 1958    0]
  [   0    0    0    0    0 1085]]
 
@@ -57,29 +57,29 @@ controller failure due to supplier production failure       1.00      1.00      
 ======================================================================
 WARRANTY DECISION CLASSIFIER (3 classes)  [test set — leaky, see above]
 ======================================================================
-Accuracy:             0.8939
-Precision (weighted): 0.8972
-Precision (macro):    0.8954
-Recall (weighted):    0.8939
-Recall (macro):       0.9006
-F1 (weighted):        0.8943
-F1 (macro):           0.8967
+Accuracy:             0.8952
+Precision (weighted): 0.8981
+Precision (macro):    0.8966
+Recall (weighted):    0.8952
+Recall (macro):       0.9015
+F1 (weighted):        0.8956
+F1 (macro):           0.8979
 
 Confusion Matrix:
-[[2946  124    0]
- [  71 3383  602]
- [   0  264 2610]]
+[[2949  121    0]
+ [  70 3402  584]
+ [   0  273 2601]]
 
 Classification Report:
                             precision    recall  f1-score   support
 
 According to Specification       0.98      0.96      0.97      3070
-          Customer Failure       0.90      0.83      0.86      4056
-        Production Failure       0.81      0.91      0.86      2874
+          Customer Failure       0.90      0.84      0.87      4056
+        Production Failure       0.82      0.91      0.86      2874
 
-                  accuracy                           0.89     10000
+                  accuracy                           0.90     10000
                  macro avg       0.90      0.90      0.90     10000
-              weighted avg       0.90      0.89      0.89     10000
+              weighted avg       0.90      0.90      0.90     10000
 
 
 ======================================================================
@@ -87,65 +87,65 @@ PER-CLASS ANALYSIS
 ======================================================================
 
 --- Failure Analysis Classes ---
-  ASIC CJ327 failure due to EOS: TP=1174, FP=0, FN=0, Support=1174
+  ASIC CJ327 failure due to EOS: TP=1173, FP=0, FN=1, Support=1174
   Connector damage: TP=1503, FP=0, FN=0, Support=1503
-  NTF: TP=2947, FP=70, FN=123, Support=3070
-  Sensor short due to moisture: TP=1140, FP=123, FN=70, Support=1210
+  NTF: TP=2944, FP=73, FN=126, Support=3070
+  Sensor short due to moisture: TP=1138, FP=126, FN=72, Support=1210
   Track burnt due to EOS: TP=1958, FP=0, FN=0, Support=1958
   controller failure due to supplier production failure: TP=1085, FP=0, FN=0, Support=1085
 
 --- Warranty Decision Classes ---
-  According to Specification: TP=2946, FP=71, FN=124, Support=3070
-  Customer Failure: TP=3383, FP=388, FN=673, Support=4056
-  Production Failure: TP=2610, FP=602, FN=264, Support=2874
+  According to Specification: TP=2949, FP=70, FN=121, Support=3070
+  Customer Failure: TP=3402, FP=394, FN=654, Support=4056
+  Production Failure: TP=2601, FP=584, FN=273, Support=2874
 
 ======================================================================
 FEATURE IMPORTANCE ANALYSIS
 ======================================================================
 
 Top 20 Features for Failure Analysis:
-  Voltage: 0.2484
-  dtc_count: 0.1159
-  has_P: 0.1009
-  none: 0.0991
-  has_U: 0.0719
-  has_C: 0.0588
-  Mileage_km: 0.0329
-  has_B: 0.0306
-  Customer Complaint_Multiple warning lights ON: 0.0237
-  Customer Complaint_ABS warning light ON: 0.0191
-  Customer Complaint_OBD Light ON: 0.0183
-  Customer Complaint_Brake warning light ON: 0.0113
-  Customer Complaint_Engine overheating: 0.0086
-  Customer Complaint_Battery warning light ON: 0.0079
-  dtc_p0301: 0.0069
-  Customer Complaint_Engine stalling: 0.0067
-  p1682: 0.0061
-  p0301: 0.0061
-  p0302: 0.0046
-  p0481: 0.0045
+  Voltage: 0.1669
+  dtc_count: 0.1033
+  none: 0.0897
+  has_P: 0.0845
+  voltage_band_over_voltage: 0.0704
+  voltage_band_nominal: 0.0703
+  voltage_band_high_normal: 0.0698
+  has_C: 0.0536
+  has_U: 0.0529
+  voltage_band_under_voltage: 0.0290
+  has_B: 0.0272
+  Mileage_km: 0.0251
+  Customer Complaint_ABS warning light ON: 0.0144
+  Customer Complaint_OBD Light ON: 0.0141
+  Customer Complaint_Multiple warning lights ON: 0.0108
+  Customer Complaint_Brake warning light ON: 0.0076
+  Customer Complaint_Engine overheating: 0.0064
+  voltage_band_low_normal: 0.0059
+  Year: 0.0052
+  Customer Complaint_Engine stalling: 0.0043
 
 Top 20 Features for Warranty Decision:
-  fa_prob_NTF: 0.2082
-  Voltage: 0.1140
-  none: 0.1095
-  dtc_count: 0.0849
-  has_P: 0.0689
-  fa_prob_Track burnt due to EOS: 0.0516
-  fa_prob_Sensor short due to moisture: 0.0498
-  Mileage_km: 0.0420
-  fa_prob_controller failure due to supplier production failure: 0.0349
-  fa_prob_Connector damage: 0.0271
-  fa_prob_ASIC CJ327 failure due to EOS: 0.0264
-  has_C: 0.0204
-  has_U: 0.0188
-  Year: 0.0160
-  Customer Complaint_OBD Light ON: 0.0129
-  Customer Complaint_Multiple warning lights ON: 0.0124
-  has_B: 0.0085
-  Customer Complaint_Engine overheating: 0.0072
-  Customer Complaint_ABS warning light ON: 0.0070
-  Customer Complaint_Brake warning light ON: 0.0035
+  fa_prob_NTF: 0.1643
+  Voltage: 0.1043
+  none: 0.0966
+  dtc_count: 0.0963
+  has_P: 0.0603
+  fa_prob_Sensor short due to moisture: 0.0523
+  Mileage_km: 0.0443
+  fa_prob_Connector damage: 0.0331
+  fa_prob_Track burnt due to EOS: 0.0327
+  voltage_band_nominal: 0.0326
+  fa_prob_controller failure due to supplier production failure: 0.0300
+  voltage_band_over_voltage: 0.0285
+  Year: 0.0194
+  has_C: 0.0189
+  voltage_band_under_voltage: 0.0183
+  fa_prob_ASIC CJ327 failure due to EOS: 0.0168
+  Customer Complaint_OBD Light ON: 0.0099
+  has_U: 0.0094
+  voltage_band_high_normal: 0.0090
+  Customer Complaint_Multiple warning lights ON: 0.0089
 
 ======================================================================
 CROSS-VALIDATION ANALYSIS (3-fold on held-out test set)  [FIX 2]
@@ -159,14 +159,14 @@ CROSS-VALIDATION ANALYSIS (3-fold on held-out test set)  [FIX 2]
   cv=3 is used here to keep runtime reasonable; increase for tighter CIs.
 
   Running 3-fold CV on the 10 000-row held-out test set...
-  Failure Analysis CV Accuracy: 0.9771 (+/- 0.0038)
-  Individual folds: ['0.9790', '0.9778', '0.9745']
+  Failure Analysis CV Accuracy: 0.9765 (+/- 0.0044)
+  Individual folds: ['0.9763', '0.9793', '0.9739']
 
   NOTE: WD CV also uses FA-augmented features (inference-style probabilities
   from the already-trained clf_fa), matching the production data path.
 
-  Warranty Decision CV Accuracy: 0.8952 (+/- 0.0041)
-  Individual folds: ['0.8944', '0.8980', '0.8932']
+  Warranty Decision CV Accuracy: 0.8913 (+/- 0.0039)
+  Individual folds: ['0.8911', '0.8938', '0.8890']
 
 ======================================================================
 CASCADE CALIBRATION CHECK  [FIX 3]
@@ -184,10 +184,10 @@ CASCADE CALIBRATION CHECK  [FIX 3]
 
 
   FA top-class probability distribution (clf_wd cascade input):
-    Training rows  — mean=0.9888  median=1.0000  std=0.0438
-    Test rows      — mean=0.9776  median=1.0000  std=0.0741
+    Training rows  — mean=0.9887  median=1.0000  std=0.0439
+    Test rows      — mean=0.9774  median=1.0000  std=0.0751
 
-  ✓  Mean gap = 0.0112 — cascade distribution is consistent.
+  ✓  Mean gap = 0.0113 — cascade distribution is consistent.
 
 ======================================================================
 END-TO-END PIPELINE EVALUATION  [FIX 4]
@@ -246,12 +246,12 @@ EVALUATION SUMMARY
 ======================================================================
 
   Isolated ML classifiers  (test set — mildly optimistic due to leakage):
-    Failure Analysis   accuracy: 0.9807
-    Warranty Decision  accuracy: 0.8939
+    Failure Analysis   accuracy: 0.9801
+    Warranty Decision  accuracy: 0.8952
 
   CV variance  (3-fold on held-out test set):
-    Failure Analysis   0.9771 +/- 0.0038
-    Warranty Decision  0.8952 +/- 0.0041
+    Failure Analysis   0.9765 +/- 0.0044
+    Warranty Decision  0.8913 +/- 0.0039
 
   Remaining recommended fixes in train_and_save():
     [HIGH]   Split the dataframe FIRST, then fit transformers on train only.

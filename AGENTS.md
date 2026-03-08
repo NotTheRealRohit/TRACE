@@ -18,6 +18,7 @@
 │   ├── main.py              # API endpoints (v2.0)
 │   ├── ml_predictor.py      # ML predictor (RandomForest) with LLM integration
 │   ├── ml_predictor_DecisionTree.py  # Alternative ML model
+│   ├── test_api_timing.py   # API timing tests
 │   ├── llm_client.py        # OpenRouter LLM client for note categorization
 │   ├── logging_config.py    # Centralized logging configuration
 │   ├── evaluate_model.py    # Model evaluation utilities
@@ -144,6 +145,8 @@ python3 -m pytest backend/tests/test_llm_client_logging.py -v
 python3 -m pytest backend/tests/test_ml_predictor.py -v
 python3 -m pytest backend/tests/test_llm_client.py -v
 python3 -m pytest backend/tests/test_e2e.py -v
+python3 -m pytest backend/tests/test_predictor_llm.py -v
+python3 -m pytest backend/tests/test_resilience.py -v
 ```
 
 ### API Testing
@@ -325,7 +328,7 @@ Description of what this module does.
     "confidence": 85.0,             # 0-100
     "reason": "Human-readable explanation",
     "matched_complaint": "Engine overheating",
-    "decision_engine": "Rule-based" | "ML model"
+    "decision_engine": "LLM+Rule+ML" | "Rule+ML" | "ML"
 }
 ```
 

@@ -69,7 +69,8 @@ FEATURE_NAMES = None
 # Helpers
 # ---------------------------------------------------------------------------
 
-def load_data(ohe, tfidf_d, ohe_supplier, mileage_scaler, year_scaler):
+def load_data(ohe, tfidf_d, ohe_supplier, mileage_scaler, year_scaler,
+              ohe_mileage, ohe_vband, claim_age_scaler):
     """
     Load and preprocess the dataset using the *already-fitted* transformers
     from the pickle bundle.  Preprocessing mirrors train_and_save() exactly
@@ -85,8 +86,18 @@ def load_data(ohe, tfidf_d, ohe_supplier, mileage_scaler, year_scaler):
     df["Failure Analysis"]   = df["Failure Analysis"].fillna("NTF")
     df["Warranty Decision"]  = df["Warranty Decision"].fillna("According to Specification")
     df["Voltage"]            = pd.to_numeric(df["Voltage"], errors="coerce").fillna(12.5)
-    # NOTE: Supplier / Mileage_km / Year have no missing values in this dataset
-    #       and were not filled in train_and_save() — do not add fillna here.
+
+    # Additional features added in train_and_save()
+    _mileage_bins   = [0, 20_000, 60_000, 100_000, np.inf]
+    _mileage_labels = ["low", "mid", "high", "very_high"]
+    df["mileage_bracket"] = pd.cut(
+        df["Mileage_km"], bins=_mileage_bins, labels=_mileage_labels
+    ).astype(str)
+
+    df["claim_age"] = pd.to_datetime(df["Date"]).dt.year - df["Year"]
+
+    from ml_predictor import voltage_band
+    df["voltage_band"] = df["Voltage"].apply(voltage_band)
 
     dtc_feats = pd.DataFrame(list(df["DTC"].apply(extract_dtc_features)))
 
@@ -102,6 +113,9 @@ def load_data(ohe, tfidf_d, ohe_supplier, mileage_scaler, year_scaler):
         + ["Voltage"]
         + list(ohe_supplier.get_feature_names_out(["Supplier"]))
         + ["Mileage_km", "Year"]
+        + list(ohe_mileage.get_feature_names_out(["mileage_bracket"]))
+        + list(ohe_vband.get_feature_names_out(["voltage_band"]))
+        + ["claim_age"]
     )
 
     return df, dtc_feats, dtc_flag_cols
@@ -314,9 +328,13 @@ def main():
     ohe_supplier  = bundle["ohe_supplier"]
     mileage_scaler= bundle["mileage_scaler"]
     year_scaler   = bundle["year_scaler"]
+    ohe_mileage   = bundle["ohe_mileage"]
+    ohe_vband     = bundle["ohe_vband"]
+    claim_age_scaler = bundle["claim_age_scaler"]
 
     df, dtc_feats, dtc_flag_cols = load_data(
-        ohe, tfidf_d, ohe_supplier, mileage_scaler, year_scaler
+        ohe, tfidf_d, ohe_supplier, mileage_scaler, year_scaler,
+        ohe_mileage, ohe_vband, claim_age_scaler
     )
 
     from scipy.sparse import hstack, csr_matrix
@@ -328,8 +346,12 @@ def main():
     X_s = ohe_supplier.transform(df[["Supplier"]])
     X_m = mileage_scaler.transform(df[["Mileage_km"]])
     X_y = year_scaler.transform(df[["Year"]])
+    X_mb = ohe_mileage.transform(df[["mileage_bracket"]])
+    X_vb = ohe_vband.transform(df[["voltage_band"]])
+    X_ca = claim_age_scaler.transform(df[["claim_age"]])
     X   = hstack([X_c, X_d, csr_matrix(X_n), csr_matrix(X_v),
-                  X_s, csr_matrix(X_m), csr_matrix(X_y)])
+                  X_s, csr_matrix(X_m), csr_matrix(X_y),
+                  X_mb, X_vb, csr_matrix(X_ca)])
 
     y_fa = le_fa.transform(df["Failure Analysis"])
     y_wd = le_wd.transform(df["Warranty Decision"])
