@@ -5,6 +5,8 @@
 - **Project**: TRACE (Technical Resolution and Claims Evaluation)
 - **Stack**: FastAPI (Python) + scikit-learn ML + vanilla HTML frontend
 - **Purpose**: Warranty claim analysis with hybrid rule-based + ML engine
+- **Status**: Active development on branch `feature/ml-model-improve`
+- **Dataset**: 50K synthetic warranty claims (2019-2024)
 
 ---
 
@@ -16,21 +18,42 @@
 │   ├── main.py              # API endpoints (v2.0)
 │   ├── ml_predictor.py      # ML predictor (RandomForest) with LLM integration
 │   ├── ml_predictor_DecisionTree.py  # Alternative ML model
+│   ├── test_api_timing.py   # API timing tests
 │   ├── llm_client.py        # OpenRouter LLM client for note categorization
 │   ├── logging_config.py    # Centralized logging configuration
-│   ├── requirements.txt    # Python dependencies
-│   ├── synthetic_warranty_claims_v2.csv  # Training dataset (12K rows)
+│   ├── evaluate_model.py    # Model evaluation utilities
+│   ├── requirements.txt     # Python dependencies
+│   ├── synthetic_warranty_claims_v2.csv  # Training dataset (50K rows)
 │   ├── trace_models.pkl     # Trained models (generated)
-│   ├── .env                 # Environment variables (API keys)
-│   ├── .env.example         # Example environment template
-│   ├── backup/              # Backup of previous versions
-│   └── tests/               # Unit and integration tests
+│   ├── .env                # Environment variables (API keys)
+│   ├── .env.example        # Example environment template
+│   ├── backup/             # Backup of previous versions
+│   ├── dataset_gen/        # Dataset generation scripts
+│   └── tests/              # Unit and integration tests
 ├── frontend/
-│   └── index.html           # Single-page frontend
+│   └── index.html          # Single-page frontend
 ├── docker-compose.yml       # Full stack deployment
-├── .opencode/               # OpenCode configuration and agents
+├── .opencode/              # OpenCode configuration and agents
+│   └── skills/             # Project-specific skills
 └── AGENTS.md               # This file
 ```
+
+---
+
+## Current Features
+
+### Hybrid Decision Engine
+- **Rule-based**: 9 domain rules (voltage thresholds, DTC prefixes, keyword detection)
+- **ML-based**: RandomForest classifier with cascade architecture (Failure Analysis → Warranty Decision)
+- **LLM-enhanced**: OpenRouter integration for semantic understanding and output formatting
+- **Fallback**: Graceful degradation when LLM unavailable
+
+### Key Capabilities
+- DTC code parsing (P, U, C, B prefixes)
+- Technician notes keyword detection
+- Voltage anomaly detection (>16V over/ <11V under)
+- Customer complaint matching
+- Confidence scoring with agreement/disagreement handling
 
 ---
 
@@ -46,6 +69,17 @@ This project uses **pyenv** for Python version management. Some commands may req
 | pytest | `pytest` (if in PATH) | `python3 -m pytest` | Preferred: use module invocation |
 | ruff | `ruff` (if installed) | N/A | Install via: `pip install ruff` |
 | black | `black` (if installed) | `python3 -m black` | Install via: `pip install black` |
+
+> **⚠️ OpenCode Glob Tool Limitation**: The `glob` tool has a known bug where it doesn't return files from all subdirectories (e.g., `backend/tests/*.py`). Use bash commands instead for file searches:
+> ```bash
+> # Find test files
+> ls backend/tests/
+> find backend/tests -name "test_*.py"
+> 
+> # Search for patterns
+> grep "pattern" backend/tests/*.py
+> ```
+> This is a known issue - always verify file existence with `ls` when glob returns unexpected results.
 
 **Installation:**
 ```bash
@@ -89,6 +123,9 @@ python3 -c "from ml_predictor import predict; print(predict('P0562', 'Engine ove
 # Or run the main module's test block
 python3 ml_predictor.py
 
+# Run model evaluation
+python3 evaluate_model.py
+
 # Run all tests (use module invocation to avoid PATH issues)
 python3 -m pytest
 
@@ -108,6 +145,8 @@ python3 -m pytest backend/tests/test_llm_client_logging.py -v
 python3 -m pytest backend/tests/test_ml_predictor.py -v
 python3 -m pytest backend/tests/test_llm_client.py -v
 python3 -m pytest backend/tests/test_e2e.py -v
+python3 -m pytest backend/tests/test_predictor_llm.py -v
+python3 -m pytest backend/tests/test_resilience.py -v
 ```
 
 ### API Testing
@@ -289,7 +328,7 @@ Description of what this module does.
     "confidence": 85.0,             # 0-100
     "reason": "Human-readable explanation",
     "matched_complaint": "Engine overheating",
-    "decision_engine": "Rule-based" | "ML model"
+    "decision_engine": "LLM+Rule+ML" | "Rule+ML" | "ML"
 }
 ```
 
@@ -327,6 +366,15 @@ python3 -c "from ml_predictor import train_and_save; train_and_save()"
 ```
 
 Or simply delete `trace_models.pkl` and restart the server — it auto-trains on startup.
+
+### Evaluate Model Performance
+
+```bash
+cd backend
+python3 evaluate_model.py
+```
+
+This runs the trained models against test data and reports accuracy metrics for both Failure Analysis and Warranty Decision classifiers.
 
 ### Using Logging
 

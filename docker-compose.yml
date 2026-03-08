@@ -7,7 +7,7 @@ services:
     env_file:
       - ./backend/.env
     environment:
-      - LOG_LEVEL=DEBUG
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
     container_name: trace_backend
     ports:
       - "8000:8000"               # localhost:8000 → container:8000
