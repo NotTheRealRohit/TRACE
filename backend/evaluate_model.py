@@ -18,12 +18,12 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from ml_predictor import (
     extract_dtc_features, match_complaint,
-    DATA_PATH, MODEL_PATH
+    DATA_PATH, MODEL_PATH, HIGH_VALUE_DTCS
 )
 
 FEATURE_NAMES = None
 
-def load_data(ohe, tfidf_d):
+def load_data(ohe, tfidf_d, ohe_supplier, mileage_scaler, year_scaler):
     """Load and preprocess the training dataset."""
     global FEATURE_NAMES
     
@@ -34,16 +34,27 @@ def load_data(ohe, tfidf_d):
     df["Failure Analysis"] = df["Failure Analysis"].fillna("NTF")
     df["Warranty Decision"] = df["Warranty Decision"].fillna("According to Specification")
     df["Voltage"] = pd.to_numeric(df["Voltage"], errors="coerce").fillna(12.5)
+    df["Supplier"] = df["Supplier"].fillna("Unknown")
+    df["Mileage_km"] = pd.to_numeric(df["Mileage_km"], errors="coerce").fillna(0)
+    df["Year"] = pd.to_numeric(df["Year"], errors="coerce").fillna(2020)
     
     dtc_feats = pd.DataFrame(list(df["DTC"].apply(extract_dtc_features)))
+    
+    dtc_flag_cols = (
+        ["dtc_count","has_P","has_U","has_C","has_B"] +
+        [f"dtc_{d.lower()}" for d in HIGH_VALUE_DTCS]
+    )
     
     FEATURE_NAMES = (
         list(ohe.get_feature_names_out(["Customer Complaint"])) +
         list(tfidf_d.get_feature_names_out()) +
-        ["dtc_count", "has_P", "has_U", "has_C", "has_B", "Voltage"]
+        dtc_flag_cols +
+        ["Voltage"] +
+        list(ohe_supplier.get_feature_names_out(["Supplier"])) +
+        ["Mileage_km", "Year"]
     )
     
-    return df, dtc_feats
+    return df, dtc_feats, dtc_flag_cols
 
 def evaluate_classifier(clf, X, y_true, le, label):
     """Compute comprehensive metrics for a classifier."""
@@ -81,16 +92,23 @@ def main():
     ohe = bundle["ohe"]
     tfidf_d = bundle["tfidf_d"]
     scaler = bundle["scaler"]
+    ohe_supplier = bundle["ohe_supplier"]
+    mileage_scaler = bundle["mileage_scaler"]
+    year_scaler = bundle["year_scaler"]
     
-    df, dtc_feats = load_data(ohe, tfidf_d)
+    df, dtc_feats, dtc_flag_cols = load_data(ohe, tfidf_d, ohe_supplier, mileage_scaler, year_scaler)
     
     from scipy.sparse import hstack, csr_matrix
     
     X_c = ohe.transform(df[["Customer Complaint"]])
     X_d = tfidf_d.transform(dtc_feats["dtc_text"])
-    X_n = dtc_feats[["dtc_count", "has_P", "has_U", "has_C", "has_B"]].values
+    X_n = dtc_feats[dtc_flag_cols].values
     X_v = scaler.transform(df[["Voltage"]])
-    X = hstack([X_c, X_d, csr_matrix(X_n), csr_matrix(X_v)])
+    X_s = ohe_supplier.transform(df[["Supplier"]])
+    X_m = mileage_scaler.transform(df[["Mileage_km"]])
+    X_y = year_scaler.transform(df[["Year"]])
+    X = hstack([X_c, X_d, csr_matrix(X_n), csr_matrix(X_v),
+                X_s, csr_matrix(X_m), csr_matrix(X_y)])
     
     y_fa = le_fa.transform(df["Failure Analysis"])
     y_wd = le_wd.transform(df["Warranty Decision"])
@@ -119,12 +137,15 @@ def main():
     print("\nClassification Report:")
     print(fa_report)
     
+    fa_probs_te = clf_fa.predict_proba(X_te)
+    X_wd_te = hstack([X_te, csr_matrix(fa_probs_te)])
+    
     print("\n" + "=" * 60)
     print("WARRANTY DECISION CLASSIFIER (3 classes)")
     print("=" * 60)
     
     wd_metrics, wd_cm, wd_report, wd_pred = evaluate_classifier(
-        clf_wd, X_te, ywd_te, le_wd, "Warranty Decision"
+        clf_wd, X_wd_te, ywd_te, le_wd, "Warranty Decision"
     )
     
     print(f"Accuracy:           {wd_metrics['accuracy']:.4f}")

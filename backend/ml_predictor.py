@@ -47,6 +47,11 @@ KNOWN_COMPLAINTS = [
     "Low pickup", "Engine overheating", "Rough idling", "Brake warning light ON",
 ]
 
+HIGH_VALUE_DTCS = [
+    "P0300", "P0615", "P0481", "P1682", "P0301",
+    "P0480", "P0073", "P0304", "P0482"
+]
+
 RULES = [
     {
         "id": "over_voltage",
@@ -141,7 +146,8 @@ RULES = [
 def extract_dtc_features(dtc_str: str) -> dict:
     s = str(dtc_str).strip().upper() if dtc_str else ""
     if s in ("", "NA", "NAN", "NONE"):
-        return {"dtc_count":0,"has_P":0,"has_U":0,"has_C":0,"has_B":0,"dtc_text":"none"}
+        return {"dtc_count":0,"has_P":0,"has_U":0,"has_C":0,"has_B":0,"dtc_text":"none",
+                **{f"dtc_{d.lower()}": 0 for d in HIGH_VALUE_DTCS}}
     codes = [c.strip() for c in s.split(",") if c.strip()]
     return {
         "dtc_count": len(codes),
@@ -150,6 +156,7 @@ def extract_dtc_features(dtc_str: str) -> dict:
         "has_C": int(any(c.startswith("C") for c in codes)),
         "has_B": int(any(c.startswith("B") for c in codes)),
         "dtc_text": " ".join(codes),
+        **{f"dtc_{d.lower()}": int(d in codes) for d in HIGH_VALUE_DTCS},
     }
 
 
@@ -199,28 +206,49 @@ def train_and_save():
 
     X_c = ohe.fit_transform(df[["Customer Complaint"]])
     X_d = tfidf_d.fit_transform(dtc_feats["dtc_text"])
-    X_n = dtc_feats[["dtc_count","has_P","has_U","has_C","has_B"]].values
+    dtc_flag_cols = (
+        ["dtc_count","has_P","has_U","has_C","has_B"] +
+        [f"dtc_{d.lower()}" for d in HIGH_VALUE_DTCS]
+    )
+    X_n = dtc_feats[dtc_flag_cols].values
     X_v = scaler.fit_transform(df[["Voltage"]])          # FIX 3 also uses this
 
+    ohe_supplier = OneHotEncoder(sparse_output=True, handle_unknown="ignore")
+    mileage_scaler = StandardScaler()
+    year_scaler = StandardScaler()
+    X_s = ohe_supplier.fit_transform(df[["Supplier"]])
+    X_m = mileage_scaler.fit_transform(df[["Mileage_km"]])
+    X_y = year_scaler.fit_transform(df[["Year"]])
+
     from scipy.sparse import csr_matrix
-    X   = hstack([X_c, X_d, csr_matrix(X_n), csr_matrix(X_v)])
+    X   = hstack([X_c, X_d, csr_matrix(X_n), csr_matrix(X_v),
+                  X_s, csr_matrix(X_m), csr_matrix(X_y)])
 
     X_tr, X_te, yfa_tr, yfa_te, ywd_tr, ywd_te = train_test_split(
         X, y_fa, y_wd, test_size=0.2, random_state=42)
 
-    logger.info("[INIT] Training ML models...")
+    logger.info("[INIT] Training Failure Analysis classifier...")
     clf_fa = RandomForestClassifier(n_estimators=200, random_state=42, n_jobs=-1)
     clf_fa.fit(X_tr, yfa_tr)
-    clf_wd = RandomForestClassifier(n_estimators=200, random_state=42, n_jobs=-1)
-    clf_wd.fit(X_tr, ywd_tr)
+
+    fa_probs_tr = clf_fa.predict_proba(X_tr)
+    fa_probs_te = clf_fa.predict_proba(X_te)
+    X_wd_tr = hstack([X_tr, csr_matrix(fa_probs_tr)])
+    X_wd_te = hstack([X_te, csr_matrix(fa_probs_te)])
+
+    logger.info("[INIT] Training Warranty Decision classifier with FA cascade...")
+    clf_wd = RandomForestClassifier(n_estimators=200, class_weight="balanced", random_state=42, n_jobs=-1)
+    clf_wd.fit(X_wd_tr, ywd_tr)
 
     fa_acc = accuracy_score(yfa_te, clf_fa.predict(X_te))
-    wd_acc = accuracy_score(ywd_te, clf_wd.predict(X_te))
+    wd_acc = accuracy_score(ywd_te, clf_wd.predict(X_wd_te))
     logger.info("Failure Analysis accuracy: %.3f (dataset is synthetically balanced)", fa_acc)
     logger.info("Warranty Decision accuracy: %.3f", wd_acc)
 
     bundle = dict(clf_fa=clf_fa, clf_wd=clf_wd, le_fa=le_fa, le_wd=le_wd,
-                  ohe=ohe, tfidf_d=tfidf_d, scaler=scaler)
+                  ohe=ohe, tfidf_d=tfidf_d, scaler=scaler,
+                  ohe_supplier=ohe_supplier, mileage_scaler=mileage_scaler,
+                  year_scaler=year_scaler)
     with open(MODEL_PATH, "wb") as f:
         pickle.dump(bundle, f)
     logger.info("[INIT] Models saved to %s", MODEL_PATH)
@@ -291,33 +319,50 @@ def run_ml(features: dict) -> dict:
     if _bundle is None:
         _bundle = load_models()
 
+    dtc_flag_cols = (
+        ["dtc_count","has_P","has_U","has_C","has_B"] +
+        [f"dtc_{d.lower()}" for d in HIGH_VALUE_DTCS]
+    )
     df_row = pd.DataFrame([{
         "Customer Complaint": features.get("customer_complaint", "OBD Light ON"),
         "dtc_text": features.get("dtc_text", ""),
-        "dtc_count": features.get("dtc_count", 0),
-        "has_P": features.get("has_P", 0),
-        "has_U": features.get("has_U", 0),
-        "has_C": features.get("has_C", 0),
-        "has_B": features.get("has_B", 0),
+        **{col: features.get(col, 0) for col in dtc_flag_cols},
     }])
 
     from scipy.sparse import csr_matrix as _csr
     X_c = _bundle["ohe"].transform(df_row[["Customer Complaint"]])
     X_d = _bundle["tfidf_d"].transform(df_row["dtc_text"])
-    X_n = df_row[["dtc_count", "has_P", "has_U", "has_C", "has_B"]].values
+    X_n = df_row[dtc_flag_cols].values
     X_v = _bundle["scaler"].transform(
         pd.DataFrame([[features.get("voltage", 12.5)]], columns=["Voltage"])
     )
-    X = hstack([X_c, X_d, _csr(X_n), _csr(X_v)])
 
-    fa_idx = _bundle["clf_fa"].predict(X)[0]
-    wd_idx = _bundle["clf_wd"].predict(X)[0]
-    fa_prob = float(np.max(_bundle["clf_fa"].predict_proba(X)[0]))
-    wd_prob = float(np.max(_bundle["clf_wd"].predict_proba(X)[0]))
+    X_s = _bundle["ohe_supplier"].transform(
+        pd.DataFrame([[features.get("supplier", "Unknown")]], columns=["Supplier"])
+    )
+    X_m = _csr(_bundle["mileage_scaler"].transform(
+        pd.DataFrame([[features.get("mileage_km", 50000.0)]], columns=["Mileage_km"])
+    ))
+    X_y = _csr(_bundle["year_scaler"].transform(
+        pd.DataFrame([[features.get("year", 2024)]], columns=["Year"])
+    ))
+
+    X = hstack([X_c, X_d, _csr(X_n), _csr(X_v), X_s, X_m, X_y])
+
+    # FIX 5 + FIX 1: single proba call for FA, cascade into WD
+    fa_proba_row = _bundle["clf_fa"].predict_proba(X)[0]
+    fa_idx = int(np.argmax(fa_proba_row))
+    fa_prob = float(fa_proba_row[fa_idx])
+
+    X_wd = hstack([X, _csr(fa_proba_row.reshape(1, -1))])
+
+    wd_proba_row = _bundle["clf_wd"].predict_proba(X_wd)[0]
+    wd_idx = int(np.argmax(wd_proba_row))
+    wd_prob = float(wd_proba_row[wd_idx])
 
     ml_failure_analysis = _bundle["le_fa"].inverse_transform([fa_idx])[0]
     ml_warranty_decision = _bundle["le_wd"].inverse_transform([wd_idx])[0]
-    ml_confidence = round(min(98.0, max(50.0, (fa_prob * wd_prob) ** 0.5 * 100)), 1)
+    ml_confidence = round(min(98.0, max(0.0, (fa_prob * wd_prob) ** 0.5 * 100)), 1)
 
     return {
         "ml_warranty_decision": ml_warranty_decision,
@@ -336,8 +381,8 @@ WEAK_INPUT_PENALTY = 0.85
 
 RULE_WEIGHT_AGREE = 0.7
 ML_WEIGHT_AGREE = 0.3
-RULE_WEIGHT_DISAGREE = 0.6
-ML_WEIGHT_DISAGREE = 0.1
+RULE_WEIGHT_DISAGREE = 0.55
+ML_WEIGHT_DISAGREE = 0.35
 
 
 def combine_scores(
@@ -526,6 +571,9 @@ def predict(fault_code: str, technician_notes: str, voltage: float) -> dict:
             "has_U": dtc_f["has_U"],
             "has_C": dtc_f["has_C"],
             "has_B": dtc_f["has_B"],
+            "supplier": "Unknown",
+            "mileage_km": 50000.0,
+            "year": 2024,
         }
 
     ml_result = run_ml(features)
