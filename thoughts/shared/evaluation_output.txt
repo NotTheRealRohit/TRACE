@@ -1,0 +1,138 @@
+============================================================
+TRACE MODEL PERFORMANCE EVALUATION
+============================================================
+
+============================================================
+FAILURE ANALYSIS CLASSIFIER (6 classes)
+============================================================
+Accuracy:           1.0000
+Precision (weighted): 1.0000
+Precision (macro):   1.0000
+Recall (weighted):    1.0000
+Recall (macro):      1.0000
+F1 (weighted):        1.0000
+F1 (macro):           1.0000
+
+Confusion Matrix:
+[[307   0   0   0   0   0]
+ [  0 324   0   0   0   0]
+ [  0   0 714   0   0   0]
+ [  0   0   0 327   0   0]
+ [  0   0   0   0 476   0]
+ [  0   0   0   0   0 252]]
+
+Classification Report:
+                                                       precision    recall  f1-score   support
+
+                        ASIC CJ327 failure due to EOS       1.00      1.00      1.00       307
+                                     Connector damage       1.00      1.00      1.00       324
+                                                  NTF       1.00      1.00      1.00       714
+                         Sensor short due to moisture       1.00      1.00      1.00       327
+                               Track burnt due to EOS       1.00      1.00      1.00       476
+controller failure due to supplier production failure       1.00      1.00      1.00       252
+
+                                             accuracy                           1.00      2400
+                                            macro avg       1.00      1.00      1.00      2400
+                                         weighted avg       1.00      1.00      1.00      2400
+
+
+============================================================
+WARRANTY DECISION CLASSIFIER (3 classes)
+============================================================
+Accuracy:           0.9075
+Precision (weighted): 0.9114
+Precision (macro):   0.9093
+Recall (weighted):    0.9075
+Recall (macro):      0.9151
+F1 (weighted):        0.9080
+F1 (macro):           0.9109
+
+Confusion Matrix:
+[[714   0   0]
+ [  0 836 151]
+ [  0  71 628]]
+
+Classification Report:
+                            precision    recall  f1-score   support
+
+According to Specification       1.00      1.00      1.00       714
+          Customer Failure       0.92      0.85      0.88       987
+        Production Failure       0.81      0.90      0.85       699
+
+                  accuracy                           0.91      2400
+                 macro avg       0.91      0.92      0.91      2400
+              weighted avg       0.91      0.91      0.91      2400
+
+
+============================================================
+PER-CLASS ANALYSIS
+============================================================
+
+--- Failure Analysis Classes ---
+ASIC CJ327 failure due to EOS: TP=307, FP=0, FN=0, Support=307
+Connector damage: TP=324, FP=0, FN=0, Support=324
+NTF: TP=714, FP=0, FN=0, Support=714
+Sensor short due to moisture: TP=327, FP=0, FN=0, Support=327
+Track burnt due to EOS: TP=476, FP=0, FN=0, Support=476
+controller failure due to supplier production failure: TP=252, FP=0, FN=0, Support=252
+
+--- Warranty Decision Classes ---
+According to Specification: TP=714, FP=0, FN=0, Support=714
+Customer Failure: TP=836, FP=71, FN=151, Support=987
+Production Failure: TP=628, FP=151, FN=71, Support=699
+
+============================================================
+FEATURE IMPORTANCE ANALYSIS
+============================================================
+
+Top 20 Features for Failure Analysis:
+  Voltage: 0.2269
+  dtc_count: 0.1118
+  has_P: 0.0892
+  none: 0.0833
+  has_U: 0.0797
+  Customer Complaint_OBD Light ON: 0.0580
+  has_C: 0.0483
+  Customer Complaint_Brake warning light ON: 0.0394
+  has_B: 0.0317
+  p0300: 0.0199
+  p0171: 0.0142
+  p0455: 0.0135
+  Customer Complaint_Engine overheating: 0.0122
+  Customer Complaint_Vehicle not starting: 0.0113
+  p0480: 0.0104
+  p0302: 0.0098
+  p0481: 0.0086
+  p1682: 0.0079
+  p0303: 0.0070
+  p0562: 0.0065
+
+Top 20 Features for Warranty Decision:
+  Voltage: 0.1954
+  none: 0.1408
+  dtc_count: 0.1406
+  has_P: 0.1164
+  Customer Complaint_OBD Light ON: 0.0891
+  has_U: 0.0289
+  p0300: 0.0247
+  p0171: 0.0230
+  has_C: 0.0214
+  Customer Complaint_Engine overheating: 0.0211
+  p0455: 0.0204
+  Customer Complaint_Brake warning light ON: 0.0184
+  has_B: 0.0134
+  p0480: 0.0063
+  p0481: 0.0059
+  p0302: 0.0059
+  p0562: 0.0058
+  p0054: 0.0057
+  Customer Complaint_Starting Problem: 0.0055
+  p1682: 0.0053
+
+============================================================
+CROSS-VALIDATION ANALYSIS (3-fold)
+============================================================
+
+Running 3-fold CV on 30% sample (3600 samples)...
+Failure Analysis CV Accuracy: 0.9994 (+/- 0.0016)
+Warranty Decision CV Accuracy: 0.9117 (+/- 0.0229)
