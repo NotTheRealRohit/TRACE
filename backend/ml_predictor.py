@@ -73,7 +73,7 @@ from   difflib import get_close_matches
 from   scipy.sparse import hstack
 from   sklearn.ensemble import RandomForestClassifier
 from   sklearn.preprocessing import LabelEncoder
-from   sklearn.model_selection import train_test_split
+from   sklearn.model_selection import train_test_split, cross_val_predict
 from   sklearn.metrics import accuracy_score
 from   sklearn.feature_extraction.text import TfidfVectorizer   # kept for DTC text
 from   sklearn.preprocessing import OneHotEncoder, StandardScaler
@@ -243,6 +243,24 @@ def match_complaint(user_text: str) -> str:
     return matches[0] if matches else "OBD Light ON"
 
 
+def voltage_band(v: float) -> str:
+    """
+    Bucket raw voltage into domain-meaningful bands.
+    Mirrors the voltage thresholds already encoded in the rule engine
+    (over_voltage rule: v > 16.0, low_voltage rule: v < 11.0) so that
+    clf_wd sees the same non-linear boundary the rules exploit.
+    """
+    if v < 11.0:
+        return "under_voltage"
+    if v > 16.0:
+        return "over_voltage"
+    if v < 12.0:
+        return "low_normal"
+    if v > 14.5:
+        return "high_normal"
+    return "nominal"
+
+
 def train_and_save():
     logger.info("[INIT] Loading dataset from %s", DATA_PATH)
     df = pd.read_csv(DATA_PATH)
@@ -267,6 +285,30 @@ def train_and_save():
         df, dtc_feats, y_fa, y_wd, test_size=0.2, random_state=42
     )
 
+    # ── Feature Engineering: new warranty-signal columns ─────────────────────
+    # Applied AFTER split so df_tr and df_te are independent.
+    # 1. mileage_bracket — warranty decisions are threshold-sensitive to mileage;
+    #    OHE captures the non-linearity better than a raw scaled value.
+    _mileage_bins   = [0, 20_000, 60_000, 100_000, np.inf]
+    _mileage_labels = ["low", "mid", "high", "very_high"]
+    df_tr["mileage_bracket"] = pd.cut(
+        df_tr["Mileage_km"], bins=_mileage_bins, labels=_mileage_labels
+    ).astype(str)
+    df_te["mileage_bracket"] = pd.cut(
+        df_te["Mileage_km"], bins=_mileage_bins, labels=_mileage_labels
+    ).astype(str)
+
+    # 2. claim_age — years between vehicle manufacture year and claim date.
+    #    A direct warranty-eligibility signal entirely absent from the current
+    #    feature set. Raw 'Year' column (importance 0.016) is the vehicle year
+    #    alone; claim_age combines it with the claim date for real signal.
+    df_tr["claim_age"] = pd.to_datetime(df_tr["Date"]).dt.year - df_tr["Year"]
+    df_te["claim_age"] = pd.to_datetime(df_te["Date"]).dt.year - df_te["Year"]
+
+    # 3. voltage_band — OHE version of voltage buckets aligned to rule thresholds.
+    df_tr["voltage_band"] = df_tr["Voltage"].apply(voltage_band)
+    df_te["voltage_band"] = df_te["Voltage"].apply(voltage_band)
+
     dtc_flag_cols = (
         ["dtc_count","has_P","has_U","has_C","has_B"] +
         [f"dtc_{d.lower()}" for d in HIGH_VALUE_DTCS]
@@ -279,6 +321,9 @@ def train_and_save():
     ohe_supplier   = OneHotEncoder(sparse_output=True, handle_unknown="ignore")
     mileage_scaler = StandardScaler()
     year_scaler    = StandardScaler()
+    ohe_mileage      = OneHotEncoder(sparse_output=True, handle_unknown="ignore")
+    ohe_vband        = OneHotEncoder(sparse_output=True, handle_unknown="ignore")
+    claim_age_scaler = StandardScaler()
 
     X_c_tr = ohe.fit_transform(df_tr[["Customer Complaint"]])
     X_d_tr = tfidf_d.fit_transform(dtc_tr["dtc_text"])
@@ -287,10 +332,14 @@ def train_and_save():
     X_s_tr = ohe_supplier.fit_transform(df_tr[["Supplier"]])
     X_m_tr = mileage_scaler.fit_transform(df_tr[["Mileage_km"]])
     X_y_tr = year_scaler.fit_transform(df_tr[["Year"]])
+    X_mb_tr = ohe_mileage.fit_transform(df_tr[["mileage_bracket"]])
+    X_vb_tr = ohe_vband.fit_transform(df_tr[["voltage_band"]])
+    X_ca_tr = claim_age_scaler.fit_transform(df_tr[["claim_age"]])
 
     from scipy.sparse import csr_matrix
     X_tr = hstack([X_c_tr, X_d_tr, csr_matrix(X_n_tr), csr_matrix(X_v_tr),
-                   X_s_tr, csr_matrix(X_m_tr), csr_matrix(X_y_tr)])
+                   X_s_tr, csr_matrix(X_m_tr), csr_matrix(X_y_tr),
+                   X_mb_tr, X_vb_tr, csr_matrix(X_ca_tr)])
 
     # ── Step 3: transform() on the TEST slice only ────────────────────────────
     X_c_te = ohe.transform(df_te[["Customer Complaint"]])
@@ -300,15 +349,26 @@ def train_and_save():
     X_s_te = ohe_supplier.transform(df_te[["Supplier"]])
     X_m_te = mileage_scaler.transform(df_te[["Mileage_km"]])
     X_y_te = year_scaler.transform(df_te[["Year"]])
+    X_mb_te = ohe_mileage.transform(df_te[["mileage_bracket"]])
+    X_vb_te = ohe_vband.transform(df_te[["voltage_band"]])
+    X_ca_te = claim_age_scaler.transform(df_te[["claim_age"]])
 
     X_te = hstack([X_c_te, X_d_te, csr_matrix(X_n_te), csr_matrix(X_v_te),
-                   X_s_te, csr_matrix(X_m_te), csr_matrix(X_y_te)])
+                   X_s_te, csr_matrix(X_m_te), csr_matrix(X_y_te),
+                   X_mb_te, X_vb_te, csr_matrix(X_ca_te)])
 
     logger.info("[INIT] Training Failure Analysis classifier...")
+    logger.info("[INIT] Generating OOF FA probabilities for WD cascade (cv=5)...")
+    fa_probs_tr = cross_val_predict(
+        RandomForestClassifier(n_estimators=200, random_state=42, n_jobs=-1),
+        X_tr, yfa_tr,
+        cv=5,
+        method="predict_proba",
+    )
+    # Train the final clf_fa on ALL of X_tr (OOF probs used only for clf_wd training)
     clf_fa = RandomForestClassifier(n_estimators=200, random_state=42, n_jobs=-1)
     clf_fa.fit(X_tr, yfa_tr)
 
-    fa_probs_tr = clf_fa.predict_proba(X_tr)
     fa_probs_te = clf_fa.predict_proba(X_te)
     X_wd_tr = hstack([X_tr, csr_matrix(fa_probs_tr)])
     X_wd_te = hstack([X_te, csr_matrix(fa_probs_te)])
@@ -325,7 +385,9 @@ def train_and_save():
     bundle = dict(clf_fa=clf_fa, clf_wd=clf_wd, le_fa=le_fa, le_wd=le_wd,
                   ohe=ohe, tfidf_d=tfidf_d, scaler=scaler,
                   ohe_supplier=ohe_supplier, mileage_scaler=mileage_scaler,
-                  year_scaler=year_scaler)
+                  year_scaler=year_scaler,
+                  ohe_mileage=ohe_mileage, ohe_vband=ohe_vband,
+                  claim_age_scaler=claim_age_scaler)
     with open(MODEL_PATH, "wb") as f:
         pickle.dump(bundle, f)
     logger.info("[INIT] Models saved to %s", MODEL_PATH)
@@ -424,7 +486,28 @@ def run_ml(features: dict) -> dict:
         pd.DataFrame([[features.get("year", 2024)]], columns=["Year"])
     ))
 
-    X = hstack([X_c, X_d, _csr(X_n), _csr(X_v), X_s, X_m, X_y])
+    # New features — must match train_and_save() column order exactly
+    _raw_mileage = features.get("mileage_km", 50000.0)
+    _mb_val = pd.cut(
+        pd.Series([_raw_mileage]),
+        bins=[0, 20_000, 60_000, 100_000, np.inf],
+        labels=["low", "mid", "high", "very_high"]
+    ).astype(str).iloc[0]
+    X_mb = _bundle["ohe_mileage"].transform(
+        pd.DataFrame([[_mb_val]], columns=["mileage_bracket"])
+    )
+
+    _vb_val = voltage_band(features.get("voltage", 12.5))
+    X_vb = _bundle["ohe_vband"].transform(
+        pd.DataFrame([[_vb_val]], columns=["voltage_band"])
+    )
+
+    _ca_val = float(features.get("claim_age", 1))
+    X_ca = _csr(_bundle["claim_age_scaler"].transform(
+        pd.DataFrame([[_ca_val]], columns=["claim_age"])
+    ))
+
+    X = hstack([X_c, X_d, _csr(X_n), _csr(X_v), X_s, X_m, X_y, X_mb, X_vb, X_ca])
 
     # FIX 5 + FIX 1: single proba call for FA, cascade into WD
     fa_proba_row = _bundle["clf_fa"].predict_proba(X)[0]
@@ -639,11 +722,12 @@ def predict(fault_code: str, technician_notes: str, voltage: float) -> dict:
 
     if features is None:
         dtc_f = extract_dtc_features(fc)
+        _voltage_val = v if v is not None else 12.5
         features = {
             "customer_complaint": match_complaint(notes),
             "dtc_text": dtc_f["dtc_text"],
             "dtc_count": dtc_f["dtc_count"],
-            "voltage": v if v is not None else 12.5,
+            "voltage": _voltage_val,
             "has_P": dtc_f["has_P"],
             "has_U": dtc_f["has_U"],
             "has_C": dtc_f["has_C"],
@@ -651,6 +735,7 @@ def predict(fault_code: str, technician_notes: str, voltage: float) -> dict:
             "supplier": "Unknown",
             "mileage_km": 50000.0,
             "year": 2024,
+            "claim_age": 1,          # default: assume 1-year-old claim
         }
 
     ml_result = run_ml(features)
