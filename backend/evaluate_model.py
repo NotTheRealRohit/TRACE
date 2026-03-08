@@ -186,7 +186,7 @@ def check_cascade_calibration(clf_fa, X_tr, X_te, le_fa):
 # End-to-end pipeline evaluation  (FIX 4)
 # ---------------------------------------------------------------------------
 
-def evaluate_pipeline(df_te, le_fa, le_wd, sample_size=2000, random_state=42):
+def evaluate_pipeline(df_te, le_fa, le_wd, sample_size=3, random_state=42):
     """
     Run the full predict() pipeline (Rule Engine → ML → Score Combination)
     on a random sample of held-out rows and compare to ground truth.
@@ -196,6 +196,9 @@ def evaluate_pipeline(df_te, le_fa, le_wd, sample_size=2000, random_state=42):
     technician notes, we pass the Customer Complaint text as notes so that
     match_complaint() maps it back to the same label — the closest we can
     get to a fair pipeline evaluation without real free-text notes.
+
+    NOTE: sample_size defaults to 3 to avoid long runtimes when LLM is enabled
+    (~55s per prediction). Set higher (e.g., 2000) only when LLM is disabled.
     """
     sample = df_te.sample(n=min(sample_size, len(df_te)), random_state=random_state)
 
@@ -477,11 +480,12 @@ def main():
   and can override the ML decision entirely.  The isolated classifier
   metrics above do not capture this behaviour.
 
-  2 000 rows are sampled from the held-out test set.
+  NOTE: sample_size is limited to 3 by default to avoid long runtimes.
+  If LLM is disabled, you can increase this to 2000 for better stats.
   Customer Complaint text is passed as technician_notes so that
   match_complaint() reproduces the same label as during training.
 """)
-    evaluate_pipeline(df_te, le_fa, le_wd, sample_size=2000)
+    evaluate_pipeline(df_te, le_fa, le_wd, sample_size=3)
 
     # ------------------------------------------------------------------
     # Summary

@@ -1,5 +1,5 @@
 ---
-description: Run model evaluation on TRACE ML classifiers (Failure Analysis and Warranty Decision), outputs to thoughts/shared/evaluation_output.txt
+description: Run model evaluation on TRACE ML classifiers (Failure Analysis and Warranty Decision), outputs to thoughts/shared/evaluation_output.txt — NOTE: Disable LLM to avoid 55+ second delays per prediction
 ---
 
 # Evaluate Model
@@ -8,19 +8,45 @@ You are tasked with running the model evaluation script to assess the performanc
 
 ---
 
-## Prerequisites
+## IMPORTANT: LLM Timeout Context
 
-Before running, ensure:
+**Before running evaluation, you MUST disable LLM calls** — the OpenRouter API is very slow:
 
-1. **Working directory**: `backend/`
-2. **Required files**:
-   - `backend/ml_predictor.py` — contains model training logic and paths
-   - `backend/synthetic_warranty_claims_v2.csv` — training dataset
-   - `backend/trace_models.pkl` — trained model bundle (created if missing)
+| Stage | Function | Typical Response Time |
+|-------|----------|----------------------|
+| Stage 1 | `understand_claim` (Semantic Understanding) | ~15 seconds |
+| Stage 3 | `translate_to_ml_features` (Feature Translation) | ~18 seconds |
+| Stage 6 | `format_output` (Output Formatting) | ~23 seconds |
+| **Total** | **All 3 LLM calls per prediction** | **~55 seconds** |
+
+The `evaluate_pipeline()` function runs `predict()` on **2000 samples**. With LLM enabled, this would take **2000 × 55s = ~30+ hours** — causing severe timeout errors.
 
 ---
 
 ## Execution Steps
+
+### Step 0: Disable LLM (CRITICAL)
+
+Before running evaluation, ensure LLM is disabled. The `predict()` function in `ml_predictor.py` checks:
+
+```python
+llm_available = api_key_available and len(notes) > 5
+```
+
+**Option A — Unset the API key** (recommended for evaluation):
+
+```bash
+cd backend
+unset OPENROUTER_API_KEY
+```
+
+**Option B — Use a dummy key that won't work**:
+
+```bash
+export OPENROUTER_API_KEY=""
+```
+
+This forces the fallback code paths (rule-based + ML only, no LLM), reducing each prediction to **<1 second**.
 
 ### Step 1: Check if Model Exists
 
@@ -43,11 +69,41 @@ This will:
 
 ### Step 2: Run Evaluation
 
+**CRITICAL**: Run with LLM disabled to avoid timeouts:
+
 ```bash
-cd backend && python3 evaluate_model.py
+cd backend
+unset OPENROUTER_API_KEY  # or export OPENROUTER_API_KEY=""
+python3 evaluate_model.py
 ```
 
-### Step 3: Save Output
+**Expected runtime**: ~2-5 minutes with LLM disabled (ML-only predictions).
+
+### Step 3: Monitor Progress (View Pipeline Logs)
+
+The evaluation outputs detailed logs. To watch progress in real-time:
+
+```bash
+# Run in background and capture logs
+cd backend
+unset OPENROUTER_API_KEY
+python3 evaluate_model.py 2>&1 | tee evaluation_log.txt
+```
+
+**Expected runtime**: ~2-5 minutes with LLM disabled (3 pipeline samples + ML eval).
+
+The logs show:
+- Data leakage warnings
+- ML classifier metrics (accuracy, precision, recall, F1)
+- Confusion matrices
+- Feature importance
+- Cross-validation results
+- **End-to-end pipeline evaluation** (FIX 4) — shows decision engine breakdown:
+  - `LLM+Rule+ML` — if LLM was used (slow!)
+  - `Rule+ML` — rule fired, ML agreed
+  - `ML` — no rule matched
+
+### Step 4: Save Output
 
 The script prints results to stdout. Capture and save to `<project-root>/thoughts/shared/evaluation_output.txt`:
 
@@ -74,7 +130,9 @@ The evaluation produces:
 | **Metrics** | Accuracy, Precision (weighted/macro), Recall (weighted/macro), F1 (weighted/macro) |
 | **Confusion Matrix** | Per-class TP/FP/FN |
 | **Feature Importance** | Top 20 features for each classifier |
-| **Cross-Validation** | 3-fold CV on 30% sample |
+| **Cross-Validation** | 3-fold CV on held-out test set |
+
+**NOTE**: The end-to-end pipeline evaluation (FIX 4) is limited to **3 samples** by default to avoid long runtimes. If LLM is disabled, you can increase this in the code.
 
 ---
 
@@ -107,6 +165,31 @@ The trained models use:
 | `FileNotFoundError: trace_models.pkl` | Run `python3 -c "from ml_predictor import train_and_save; train_and_save()"` |
 | `ValueError: X has N features, expected M` | Model trained with different feature set — retrain by deleting pkl file |
 | Import errors | Ensure running from `backend/` directory with correct PYTHONPATH |
+| **Evaluation hangs / times out** | **UNSET OPENROUTER_API_KEY** before running — LLM adds ~55s per prediction |
+| **Pipeline logs show LLM being called** | Check that `OPENROUTER_API_KEY` is not set in environment |
+
+## Timeout and API Response Context
+
+The `predict()` function has 6 stages, but only calls OpenRouter when:
+1. `OPENROUTER_API_KEY` is set in environment
+2. Technician notes have > 5 characters
+
+**With LLM enabled** (DO NOT use for evaluation):
+- Each prediction takes ~55 seconds
+- 2000 samples = 30+ hours → **guaranteed timeout**
+
+**With LLM disabled** (recommended):
+- Predictions use rule-based + ML only
+- Each prediction takes <1 second
+- 2000 samples = ~3-5 minutes
+
+**Pipeline logs to watch**:
+- `[STAGE 1] LLM Understanding` — appears if LLM is enabled (slow!)
+- `Rule fired: X with confidence Y` — rule-based decision
+- `Decision: ML Model` — ML prediction
+- `Decision: Combined` — final result
+
+If you see `[STAGE 1]` logs, abort and re-run with `unset OPENROUTER_API_KEY`.
 
 ---
 
