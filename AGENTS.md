@@ -6,7 +6,7 @@
 - **Stack**: FastAPI (Python) + scikit-learn ML + vanilla HTML frontend
 - **Purpose**: Warranty claim analysis with hybrid rule-based + ML engine
 - **Status**: Active development on branch `feature/ml-model-improve`
-- **Dataset**: 12K synthetic warranty claims (2019-2024)
+- **Dataset**: 50K synthetic warranty claims (2019-2024)
 
 ---
 
@@ -22,7 +22,7 @@
 │   ├── logging_config.py    # Centralized logging configuration
 │   ├── evaluate_model.py    # Model evaluation utilities
 │   ├── requirements.txt     # Python dependencies
-│   ├── synthetic_warranty_claims_v2.csv  # Training dataset (12K rows)
+│   ├── synthetic_warranty_claims_v2.csv  # Training dataset (50K rows)
 │   ├── trace_models.pkl     # Trained models (generated)
 │   ├── .env                # Environment variables (API keys)
 │   ├── .env.example        # Example environment template

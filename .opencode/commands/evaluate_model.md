@@ -49,16 +49,16 @@ cd backend && python3 evaluate_model.py
 
 ### Step 3: Save Output
 
-The script prints results to stdout. Capture and save to `thoughts/shared/evaluation_output.txt`:
+The script prints results to stdout. Capture and save to `<project-root>/thoughts/shared/evaluation_output.txt`:
 
 ```bash
-cd backend && python3 evaluate_model.py 2>&1 > thoughts/shared/evaluation_output.txt
+cd backend && python3 evaluate_model.py 2>&1 > <project-root>/thoughts/shared/evaluation_output.txt
 ```
 
 Or append to existing file:
 
 ```bash
-cd backend && python3 evaluate_model.py >> thoughts/shared/evaluation_output.txt
+cd backend && python3 evaluate_model.py >> <project-root>/thoughts/shared/evaluation_output.txt
 ```
 
 ---

@@ -1,23 +1,41 @@
-============================================================
-TRACE MODEL PERFORMANCE EVALUATION
-============================================================
+======================================================================
+TRACE MODEL PERFORMANCE EVALUATION  (v2 — corrected)
+======================================================================
 
-============================================================
-FAILURE ANALYSIS CLASSIFIER (6 classes)
-============================================================
-Accuracy:           0.9846
-Precision (weighted): 0.9845
-Precision (macro):   0.9858
-Recall (weighted):    0.9846
-Recall (macro):      0.9845
-F1 (weighted):        0.9846
-F1 (macro):           0.9851
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+DATA-LEAKAGE WARNING
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+  All six transformers (OHE, TF-IDF, three StandardScalers, supplier OHE)
+  in train_and_save() are fit on the full 50 000-row dataset BEFORE the
+  train/test split.  This leaks test-set statistics (vocabulary, mean,
+  std) into the fitted transformers.
+
+  Impact: the test-set metrics below are slightly optimistic.
+  The true generalisation performance is somewhat lower than reported.
+
+  Fix (in train_and_save()):
+    1. Split the RAW dataframe first.
+    2. Call fit_transform() only on the training slice.
+    3. Call transform() only on the test slice.
+
+
+======================================================================
+FAILURE ANALYSIS CLASSIFIER (6 classes)  [test set — leaky, see above]
+======================================================================
+Accuracy:             0.9810
+Precision (weighted): 0.9814
+Precision (macro):    0.9801
+Recall (weighted):    0.9810
+Recall (macro):       0.9841
+F1 (weighted):        0.9811
+F1 (macro):           0.9820
 
 Confusion Matrix:
 [[1174    0    0    0    0    0]
  [   0 1503    0    0    0    0]
- [   1    0 3001   68    0    0]
- [   0    0   85 1125    0    0]
+ [   1    0 2947  122    0    0]
+ [   0    0   67 1143    0    0]
  [   0    0    0    0 1958    0]
  [   0    0    0    0    0 1085]]
 
@@ -26,113 +44,217 @@ Classification Report:
 
                         ASIC CJ327 failure due to EOS       1.00      1.00      1.00      1174
                                      Connector damage       1.00      1.00      1.00      1503
-                                                  NTF       0.97      0.98      0.97      3070
-                         Sensor short due to moisture       0.94      0.93      0.94      1210
+                                                  NTF       0.98      0.96      0.97      3070
+                         Sensor short due to moisture       0.90      0.94      0.92      1210
                                Track burnt due to EOS       1.00      1.00      1.00      1958
 controller failure due to supplier production failure       1.00      1.00      1.00      1085
 
                                              accuracy                           0.98     10000
-                                            macro avg       0.99       0.990.98          10000
+                                            macro avg       0.98      0.98      0.98     10000
                                          weighted avg       0.98      0.98      0.98     10000
 
 
-============================================================
-WARRANTY DECISION CLASSIFIER (3 classes)
-============================================================
-Accuracy:           0.8971
-Precision (weighted): 0.8993
-Precision (macro):   0.8972
-Recall (weighted):    0.8971
-Recall (macro):      0.9034
-F1 (weighted):        0.8972
-F1 (macro):           0.8993
+======================================================================
+WARRANTY DECISION CLASSIFIER (3 classes)  [test set — leaky, see above]
+======================================================================
+Accuracy:             0.8933
+Precision (weighted): 0.8965
+Precision (macro):    0.8948
+Recall (weighted):    0.8933
+Recall (macro):       0.8999
+F1 (weighted):        0.8937
+F1 (macro):           0.8961
 
 Confusion Matrix:
-[[3000   69    1]
- [  85 3409 572]
- [  0  302 2562]]
+[[2949  121    0]
+ [  68 3383  605]
+ [   0  273 2601]]
 
 Classification Report:
                             precision    recall  f1-score   support
 
-According to Specification       0.97      0.98      0.97      3070
-          Customer Failure       0.90      0.84      0.87      4066
-        Production Failure       0.82      0.89      0.85      2864
+According to Specification       0.98      0.96      0.97      3070
+          Customer Failure       0.90      0.83      0.86      4056
+        Production Failure       0.81      0.91      0.86      2874
 
-                  accuracy                           0.90     10000
-                 macro avg       0.90      0.90      0.90     10000
-              weighted avg       0.90      0.90      0.90     10000
+                  accuracy                           0.89     10000
+                 macro avg       0.89      0.90      0.90     10000
+              weighted avg       0.90      0.89      0.89     10000
 
 
-============================================================
+======================================================================
 PER-CLASS ANALYSIS
-============================================================
+======================================================================
 
 --- Failure Analysis Classes ---
-ASIC CJ327 failure due to EOS: TP=1174, FP=1, FN=0, Support=1174
-Connector damage: TP=1503, FP=0, FN=0, Support=1503
-NTF: TP=3001, FP=85, FN=69, Support=3070
-Sensor short due to moisture: TP=1125, FP=68, FN=85, Support=1210
-Track burnt due to EOS: TP=1958, FP=0, FN=0, Support=1958
-controller failure due to supplier production failure: TP=1085, FP=0, FN=0, Support=1085
+  ASIC CJ327 failure due to EOS: TP=1174, FP=1, FN=0, Support=1174
+  Connector damage: TP=1503, FP=0, FN=0, Support=1503
+  NTF: TP=2947, FP=67, FN=123, Support=3070
+  Sensor short due to moisture: TP=1143, FP=122, FN=67, Support=1210
+  Track burnt due to EOS: TP=1958, FP=0, FN=0, Support=1958
+  controller failure due to supplier production failure: TP=1085, FP=0, FN=0, Support=1085
 
 --- Warranty Decision Classes ---
-According to Specification: TP=3000, FP=85, FN=70, Support=3070
-Customer Failure: TP=3409, FP=371, FN=657, Support=4066
-Production Failure: TP=2562, FP=573, FN=302, Support=2864
+  According to Specification: TP=2949, FP=68, FN=121, Support=3070
+  Customer Failure: TP=3383, FP=394, FN=673, Support=4056
+  Production Failure: TP=2601, FP=605, FN=273, Support=2874
 
-============================================================
+======================================================================
 FEATURE IMPORTANCE ANALYSIS
-============================================================
+======================================================================
 
 Top 20 Features for Failure Analysis:
-  Voltage: 0.2626
-  dtc_count: 0.1251
-  has_P: 0.0864
-  has_U: 0.0737
-  none: 0.0724
-  Customer Complaint_OBD Light ON: 0.0581
-  Customer Complaint_Brake warning light ON: 0.0479
-  has_C: 0.0422
-  has_B: 0.0367
-  Mileage_km: 0.0290
-  Customer Complaint_Engine overheating: 0.0178
-  Customer Complaint_Vehicle not starting: 0.0170
-  Customer Complaint_Rough idling: 0.0074
-  Customer Complaint_Low pickup: 0.0064
-  Customer Complaint_Starting Problem: 0.0056
-  p0620: 0.0042
-  p0615: 0.0040
-  p0481: 0.0040
-  dtc_p0300: 0.0038
-  dtc_p0304: 0.0036
+  Voltage: 0.2494
+  dtc_count: 0.1164
+  has_P: 0.0973
+  none: 0.0969
+  has_U: 0.0731
+  has_C: 0.0603
+  Mileage_km: 0.0345
+  has_B: 0.0315
+  Customer Complaint_Multiple warning lights ON: 0.0233
+  Customer Complaint_ABS warning light ON: 0.0190
+  Customer Complaint_OBD Light ON: 0.0184
+  Customer Complaint_Brake warning light ON: 0.0107
+  Customer Complaint_Engine overheating: 0.0085
+  Customer Complaint_Battery warning light ON: 0.0082
+  dtc_p0301: 0.0069
+  Customer Complaint_Engine stalling: 0.0067
+  p1682: 0.0064
+  p0301: 0.0062
+  p0302: 0.0048
+  p0481: 0.0045
 
 Top 20 Features for Warranty Decision:
-  Voltage: 0.1193
-  dtc_count: 0.1097
-  none: 0.0897
-  has_P: 0.0707
-  Customer Complaint_OBD Light ON: 0.0605
+  fa_prob_NTF: 0.2077
+  Voltage: 0.1148
+  none: 0.1075
+  dtc_count: 0.0864
+  has_P: 0.0698
+  fa_prob_Track burnt due to EOS: 0.0527
+  fa_prob_Sensor short due to moisture: 0.0518
   Mileage_km: 0.0424
-  Year: 0.0164
-  Customer Complaint_Brake warning light ON: 0.0149
-  has_U: 0.0143
-  has_C: 0.0124
-  has_B: 0.0122
-  Customer Complaint_Engine overheating: 0.0092
-  Customer Complaint_Starting Problem: 0.0069
-  Customer Complaint_Vehicle not starting: 0.0030
-  Supplier_Delphi: 0.0027
-  Customer Complaint_Rough idling: 0.0026
-  Supplier_Bosch: 0.0025
-  Supplier_STM: 0.0024
-  Supplier_Valeo: 0.0023
-  Customer Complaint_Low pickup: 0.0022
+  fa_prob_controller failure due to supplier production failure: 0.0331
+  fa_prob_Connector damage: 0.0262
+  fa_prob_ASIC CJ327 failure due to EOS: 0.0236
+  has_C: 0.0201
+  has_U: 0.0189
+  Year: 0.0160
+  Customer Complaint_OBD Light ON: 0.0131
+  Customer Complaint_Multiple warning lights ON: 0.0124
+  has_B: 0.0081
+  Customer Complaint_Engine overheating: 0.0072
+  Customer Complaint_ABS warning light ON: 0.0069
+  Customer Complaint_Brake warning light ON: 0.0038
 
-============================================================
-CROSS-VALIDATION ANALYSIS (3-fold)
-============================================================
+======================================================================
+CROSS-VALIDATION ANALYSIS (3-fold on held-out test set)  [FIX 2]
+======================================================================
 
-Running 3-fold CV on 30% sample (3600 samples)...
-Failure Analysis CV Accuracy: 0.9830 (+/- 0.0017)
-Warranty Decision CV Accuracy: 0.8915 (+/- 0.0019)
+  NOTE: CV is run exclusively on X_te (the 10 000 held-out rows the
+  trained model has never seen).  The original code sampled 30 % of the
+  full dataset with random_state=42 — the same seed as the original
+  split — causing heavy overlap with the training set and producing
+  inflated CV scores.  Running on X_te gives a proper variance estimate.
+  cv=3 is used here to keep runtime reasonable; increase for tighter CIs.
+
+  Running 3-fold CV on the 10 000-row held-out test set...
+  Failure Analysis CV Accuracy: 0.9763 (+/- 0.0031)
+  Individual folds: ['0.9769', '0.9778', '0.9742']
+
+  NOTE: WD CV also uses FA-augmented features (inference-style probabilities
+  from the already-trained clf_fa), matching the production data path.
+
+  Warranty Decision CV Accuracy: 0.8940 (+/- 0.0091)
+  Individual folds: ['0.8956', '0.8986', '0.8878']
+
+======================================================================
+CASCADE CALIBRATION CHECK  [FIX 3]
+======================================================================
+
+  clf_wd was trained with fa_probs_tr = clf_fa.predict_proba(X_tr),
+  i.e. the FA model scored its own training data.  Those probabilities
+  are systematically overconfident (skewed toward 1.0).  At inference
+  time clf_fa runs on unseen data and returns calibrated probabilities.
+  This creates a distributional shift in the cascade input features.
+
+  The check below quantifies this gap.  A mean difference > 0.05 in top-
+  class confidence indicates the shift is material and warrants the fix
+  described in the header.
+
+
+  FA top-class probability distribution (clf_wd cascade input):
+    Training rows  — mean=0.9887  median=1.0000  std=0.0438
+    Test rows      — mean=0.9780  median=1.0000  std=0.0728
+
+  ✓  Mean gap = 0.0108 — cascade distribution is consistent.
+
+======================================================================
+END-TO-END PIPELINE EVALUATION  [FIX 4]
+======================================================================
+
+  Evaluates the full predict() pipeline: Rule Engine → ML → Score
+  Combination.  The Rule Engine fires before ML for claims matching
+  voltage thresholds, moisture/physical-damage keywords, or NTF patterns,
+  and can override the ML decision entirely.  The isolated classifier
+  metrics above do not capture this behaviour.
+
+  2 000 rows are sampled from the held-out test set.
+  Customer Complaint text is passed as technician_notes so that
+  match_complaint() reproduces the same label as during training.
+
+
+  Sample size: 2000 rows
+
+  Decision engine breakdown:
+    Rule+ML: 1204 (60.2%)
+    ML: 796 (39.8%)
+
+  Failure Analysis   — Accuracy: 0.9370  |  F1 (weighted): 0.9345
+  Warranty Decision  — Accuracy: 0.7890  |  F1 (weighted): 0.7884
+
+  Failure Analysis full report:
+                                                       precision    recall  f1-score   support
+
+                        ASIC CJ327 failure due to EOS       1.00      0.64      0.78       225
+                                     Connector damage       1.00      1.00      1.00       314
+                                                  NTF       0.86      0.94      0.90       597
+                         Sensor short due to moisture       0.88      0.95      0.91       247
+                               Track burnt due to EOS       1.00      1.00      1.00       400
+controller failure due to supplier production failure       1.00      1.00      1.00       217
+
+                                             accuracy                           0.94      2000
+                                            macro avg       0.96      0.92      0.93      2000
+                                         weighted avg       0.94      0.94      0.93      2000
+
+  Warranty Decision full report:
+                            precision    recall  f1-score   support
+
+According to Specification       0.85      0.92      0.88       597
+          Customer Failure       0.94      0.63      0.75       820
+        Production Failure       0.63      0.89      0.74       583
+
+                  accuracy                           0.79      2000
+                 macro avg       0.81      0.81      0.79      2000
+              weighted avg       0.83      0.79      0.79      2000
+
+  Warranty Decision accuracy per engine:
+    Rule+ML: 0.7566  (n=1204)
+    ML: 0.8379  (n=796)
+
+======================================================================
+EVALUATION SUMMARY
+======================================================================
+
+  Isolated ML classifiers  (test set — mildly optimistic due to leakage):
+    Failure Analysis   accuracy: 0.9810
+    Warranty Decision  accuracy: 0.8933
+
+  CV variance  (3-fold on held-out test set):
+    Failure Analysis   0.9763 +/- 0.0031
+    Warranty Decision  0.8940 +/- 0.0091
+
+  Remaining recommended fixes in train_and_save():
+    [HIGH]   Split the dataframe FIRST, then fit transformers on train only.
+    [MEDIUM] Use cross_val_predict for fa_probs_tr before fitting clf_wd.
+

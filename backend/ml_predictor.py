@@ -1,19 +1,69 @@
 # -*- coding: utf-8 -*-
 """
-TRACE ML Predictor  —  Hybrid Rule + ML Engine
-------------------------------------------------
-The Warranty Dataset (12 000 rows, 2019-2024) is a synthetically balanced
-dataset where feature-target correlations are near-random by design (each
-class has equal representation across every feature combination).
+TRACE ML Predictor  —  Hybrid LLM + Rule + ML Engine
+------------------------------------------------------
+Dataset
+  synthetic_warranty_claims_v2.csv (50 000 rows, 2019-2024).
+  Synthetically generated with strong domain-consistent feature-target correlations across voltage, 
+  DTC prefix, and warranty decision — designed so that rule-based and ML features carry real predictive weight.
 
-Strategy:
-  1. Train RandomForest models on the dataset to fulfill the ML pipeline.
-  2. Apply domain-driven automotive rules (DTC prefix, voltage, keywords)
-     that produce clinically meaningful predictions for the frontend.
-  3. Blend: rules set high-confidence decisions; when no rule fires the ML
-     model's probability distribution is used as a soft signal.
+Six-Stage Prediction Pipeline  (predict())
+  Stage 1 — LLM Claim Understanding (optional)
+      If OPENROUTER_API_KEY is set and notes are non-trivial, calls
+      llm_client.understand_claim_with_retry() to categorise the claim and
+      extract a structured failure analysis before any rule or ML logic runs.
 
-Exposes: predict(fault_code, technician_notes, voltage) -> dict
+  Stage 2 — Rule Engine  (run_rules())
+      Nine deterministic automotive rules evaluated in priority order:
+        • over_voltage    (V > 16 V  → Customer Failure / Rejected,   94 %)
+        • low_voltage     (V < 11 V  → Production Failure / Approved, 83 %)
+        • moisture        (keyword match in notes → Customer Failure,  91 %)
+        • physical_damage (keyword match          → Customer Failure,  88.5 %)
+        • ntf             (No-Trouble-Found keywords → Acc. to Spec,  82 %)
+        • u_code          (U-series DTC → Production Failure,          85 %)
+        • p_code_engine   (P0-series + symptom keyword → Prod. Failure, 80.5 %)
+        • c_code          (C-series DTC → Production Failure,          78 %)
+        • b_code          (B-series DTC → Production Failure,          76 %)
+      First matching rule wins; returns rule_id, status, warranty_decision,
+      confidence, failure_analysis, and a human-readable reason string.
+
+  Stage 3 — Feature Extraction
+      If LLM is available: llm_client.translate_to_ml_features() maps the
+      raw claim to structured ML features.
+      Fallback: extract_dtc_features() parses DTC codes into prefix flags
+      (has_P/U/C/B), count, high-value DTC one-hot flags, and TF-IDF text;
+      match_complaint() fuzzy-maps free-text notes to a known complaint label.
+
+  Stage 4 — Cascaded RandomForest Scoring  (run_ml())
+      Two RF classifiers (200 estimators each) trained on:
+        Customer Complaint (OHE) · DTC text (TF-IDF 40) · DTC flags ·
+        Voltage (scaled) · Supplier (OHE) · Mileage_km (scaled) · Year (scaled)
+      Classifier 1 — Failure Analysis (root cause).
+      Classifier 2 — Warranty Decision, whose feature matrix is augmented
+                      with the FA probability vector (cascade architecture).
+      ML confidence = geometric mean of FA and WD top-class probabilities,
+      clamped to [0, 98] %.
+
+  Stage 5 — Score Combination  (combine_scores())
+      Weighted blend of rule confidence and ML confidence:
+        Agreement    → 0.70 × rule + 0.30 × ML  + 5 % agreement bonus
+        Disagreement → 0.55 × rule + 0.35 × ML
+        No rule      → ML confidence only  (× 0.85 weak-input penalty if LLM
+                        flagged the input category as "other")
+      Status thresholds: ≥ 85 % → firm decision, 65–85 % → rule/ML status,
+      < 65 % → "Needs Manual Review".
+      Decision engine tag: "LLM+Rule+ML" | "Rule+ML" | "ML".
+
+  Stage 6 — Output Formatting
+      If LLM available: llm_client.format_output() produces a polished
+      natural-language reason string.
+      Fallback: assemble_output_from_fields() builds the reason from the
+      structured fields returned by the earlier stages.
+
+Public API
+  predict(fault_code, technician_notes, voltage) -> dict
+    Keys: status, failure_analysis, warranty_decision, confidence,
+          reason, matched_complaint, decision_engine
 """
 
 import os, re, pickle, warnings
@@ -45,6 +95,8 @@ KNOWN_COMPLAINTS = [
     "Engine jerking during acceleration", "Starting Problem",
     "High fuel consumption", "OBD Light ON", "Vehicle not starting",
     "Low pickup", "Engine overheating", "Rough idling", "Brake warning light ON",
+    "ABS warning light ON", "Battery warning light ON",
+    "Engine stalling", "Multiple warning lights ON", "Transmission jerking",
 ]
 
 HIGH_VALUE_DTCS = [
@@ -178,6 +230,11 @@ def match_complaint(user_text: str) -> str:
         "rough": "Rough idling",
         "brake": "Brake warning light ON",
         "warning": "OBD Light ON",
+        "abs": "ABS warning light ON",
+        "battery": "Battery warning light ON",
+        "stall": "Engine stalling",
+        "multiple": "Multiple warning lights ON",
+        "transmission": "Transmission jerking",
     }
     for kw, complaint in kmap.items():
         if kw in ul:
@@ -195,37 +252,57 @@ def train_and_save():
     df["Warranty Decision"]  = df["Warranty Decision"].fillna("According to Specification")
     df["Voltage"]            = pd.to_numeric(df["Voltage"], errors="coerce").fillna(12.5)
 
-    dtc_feats = pd.DataFrame(list(df["DTC"].apply(extract_dtc_features)))
-
+    # LabelEncoders are fit on the full dataset so every target class is known.
+    # This is safe: target encoding does not expose test-set feature statistics.
     le_fa = LabelEncoder(); y_fa = le_fa.fit_transform(df["Failure Analysis"])
     le_wd = LabelEncoder(); y_wd = le_wd.fit_transform(df["Warranty Decision"])
 
-    ohe     = OneHotEncoder(sparse_output=True, handle_unknown="ignore")
-    tfidf_d = TfidfVectorizer(max_features=40)
-    scaler  = StandardScaler()
+    dtc_feats = pd.DataFrame(list(df["DTC"].apply(extract_dtc_features)))
 
-    X_c = ohe.fit_transform(df[["Customer Complaint"]])
-    X_d = tfidf_d.fit_transform(dtc_feats["dtc_text"])
+    # ── Step 1: split the RAW dataframe (and every derived array) FIRST ──────
+    # Splitting df before any fit_transform call ensures that no test-set
+    # statistics (vocabulary, IDF weights, mean, std) can leak into the
+    # transformers that will later be used for inference.
+    df_tr, df_te, dtc_tr, dtc_te, yfa_tr, yfa_te, ywd_tr, ywd_te = train_test_split(
+        df, dtc_feats, y_fa, y_wd, test_size=0.2, random_state=42
+    )
+
     dtc_flag_cols = (
         ["dtc_count","has_P","has_U","has_C","has_B"] +
         [f"dtc_{d.lower()}" for d in HIGH_VALUE_DTCS]
     )
-    X_n = dtc_feats[dtc_flag_cols].values
-    X_v = scaler.fit_transform(df[["Voltage"]])          # FIX 3 also uses this
 
-    ohe_supplier = OneHotEncoder(sparse_output=True, handle_unknown="ignore")
+    # ── Step 2: fit_transform on the TRAINING slice only ─────────────────────
+    ohe            = OneHotEncoder(sparse_output=True, handle_unknown="ignore")
+    tfidf_d        = TfidfVectorizer(max_features=40)
+    scaler         = StandardScaler()
+    ohe_supplier   = OneHotEncoder(sparse_output=True, handle_unknown="ignore")
     mileage_scaler = StandardScaler()
-    year_scaler = StandardScaler()
-    X_s = ohe_supplier.fit_transform(df[["Supplier"]])
-    X_m = mileage_scaler.fit_transform(df[["Mileage_km"]])
-    X_y = year_scaler.fit_transform(df[["Year"]])
+    year_scaler    = StandardScaler()
+
+    X_c_tr = ohe.fit_transform(df_tr[["Customer Complaint"]])
+    X_d_tr = tfidf_d.fit_transform(dtc_tr["dtc_text"])
+    X_n_tr = dtc_tr[dtc_flag_cols].values
+    X_v_tr = scaler.fit_transform(df_tr[["Voltage"]])
+    X_s_tr = ohe_supplier.fit_transform(df_tr[["Supplier"]])
+    X_m_tr = mileage_scaler.fit_transform(df_tr[["Mileage_km"]])
+    X_y_tr = year_scaler.fit_transform(df_tr[["Year"]])
 
     from scipy.sparse import csr_matrix
-    X   = hstack([X_c, X_d, csr_matrix(X_n), csr_matrix(X_v),
-                  X_s, csr_matrix(X_m), csr_matrix(X_y)])
+    X_tr = hstack([X_c_tr, X_d_tr, csr_matrix(X_n_tr), csr_matrix(X_v_tr),
+                   X_s_tr, csr_matrix(X_m_tr), csr_matrix(X_y_tr)])
 
-    X_tr, X_te, yfa_tr, yfa_te, ywd_tr, ywd_te = train_test_split(
-        X, y_fa, y_wd, test_size=0.2, random_state=42)
+    # ── Step 3: transform() on the TEST slice only ────────────────────────────
+    X_c_te = ohe.transform(df_te[["Customer Complaint"]])
+    X_d_te = tfidf_d.transform(dtc_te["dtc_text"])
+    X_n_te = dtc_te[dtc_flag_cols].values
+    X_v_te = scaler.transform(df_te[["Voltage"]])
+    X_s_te = ohe_supplier.transform(df_te[["Supplier"]])
+    X_m_te = mileage_scaler.transform(df_te[["Mileage_km"]])
+    X_y_te = year_scaler.transform(df_te[["Year"]])
+
+    X_te = hstack([X_c_te, X_d_te, csr_matrix(X_n_te), csr_matrix(X_v_te),
+                   X_s_te, csr_matrix(X_m_te), csr_matrix(X_y_te)])
 
     logger.info("[INIT] Training Failure Analysis classifier...")
     clf_fa = RandomForestClassifier(n_estimators=200, random_state=42, n_jobs=-1)
