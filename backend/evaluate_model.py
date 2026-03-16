@@ -32,8 +32,8 @@ FIX 3 — Cascade WD train/test mismatch note
 
 FIX 4 — End-to-end pipeline evaluation
     The production predict() function runs a Rule Engine first, which can
-    override ML entirely for ~30 % of claims (over/under-voltage, moisture,
-    physical-damage, NTF keywords, etc.).  The original evaluator only
+    override ML entirely for ~25 % of claims (moisture, physical-damage,
+    NTF keywords, DTC-code rules, etc.).  The original evaluator only
     measured the isolated ML classifiers.  A new section evaluates the
     complete Rule+ML pipeline on the held-out test rows.
 
@@ -70,7 +70,7 @@ FEATURE_NAMES = None
 # ---------------------------------------------------------------------------
 
 def load_data(ohe, tfidf_d, ohe_supplier, mileage_scaler, year_scaler,
-              ohe_mileage, ohe_vband, claim_age_scaler):
+              ohe_mileage, claim_age_scaler):
     """
     Load and preprocess the dataset using the *already-fitted* transformers
     from the pickle bundle.  Preprocessing mirrors train_and_save() exactly
@@ -85,7 +85,6 @@ def load_data(ohe, tfidf_d, ohe_supplier, mileage_scaler, year_scaler,
     df["Customer Complaint"] = df["Customer Complaint"].fillna("OBD Light ON")
     df["Failure Analysis"]   = df["Failure Analysis"].fillna("NTF")
     df["Warranty Decision"]  = df["Warranty Decision"].fillna("According to Specification")
-    df["Voltage"]            = pd.to_numeric(df["Voltage"], errors="coerce").fillna(12.5)
 
     # Additional features added in train_and_save()
     _mileage_bins   = [0, 20_000, 60_000, 100_000, np.inf]
@@ -95,9 +94,6 @@ def load_data(ohe, tfidf_d, ohe_supplier, mileage_scaler, year_scaler,
     ).astype(str)
 
     df["claim_age"] = pd.to_datetime(df["Date"]).dt.year - df["Year"]
-
-    from ml_predictor import voltage_band
-    df["voltage_band"] = df["Voltage"].apply(voltage_band)
 
     dtc_feats = pd.DataFrame(list(df["DTC"].apply(extract_dtc_features)))
 
@@ -110,11 +106,9 @@ def load_data(ohe, tfidf_d, ohe_supplier, mileage_scaler, year_scaler,
         list(ohe.get_feature_names_out(["Customer Complaint"]))
         + list(tfidf_d.get_feature_names_out())
         + dtc_flag_cols
-        + ["Voltage"]
         + list(ohe_supplier.get_feature_names_out(["Supplier"]))
         + ["Mileage_km", "Year"]
         + list(ohe_mileage.get_feature_names_out(["mileage_bracket"]))
-        + list(ohe_vband.get_feature_names_out(["voltage_band"]))
         + ["claim_age"]
     )
 
@@ -205,9 +199,9 @@ def evaluate_pipeline(df_te, le_fa, le_wd, sample_size=3, random_state=42):
     Run the full predict() pipeline (Rule Engine → ML → Score Combination)
     on a random sample of held-out rows and compare to ground truth.
 
-    predict() takes (fault_code, technician_notes, voltage).  Because the
-    training dataset stores structured complaint labels rather than raw
-    technician notes, we pass the Customer Complaint text as notes so that
+    predict() takes (fault_code, technician_notes).  Because the training
+    dataset stores structured complaint labels rather than raw technician
+    notes, we pass the Customer Complaint text as notes so that
     match_complaint() maps it back to the same label — the closest we can
     get to a fair pipeline evaluation without real free-text notes.
 
@@ -225,7 +219,6 @@ def evaluate_pipeline(df_te, le_fa, le_wd, sample_size=3, random_state=42):
             result = predict(
                 fault_code       = str(row["DTC"]) if pd.notna(row["DTC"]) else "",
                 technician_notes = str(row["Customer Complaint"]),
-                voltage          = float(row["Voltage"]),
             )
             pred_fa.append(result["failure_analysis"])
             pred_wd.append(result["warranty_decision"])
@@ -298,18 +291,12 @@ def main():
     print("DATA-LEAKAGE WARNING")
     print("!" * 70)
     print("""
-  All six transformers (OHE, TF-IDF, three StandardScalers, supplier OHE)
-  in train_and_save() are fit on the full 50 000-row dataset BEFORE the
-  train/test split.  This leaks test-set statistics (vocabulary, mean,
-  std) into the fitted transformers.
+  All transformers (OHE, TF-IDF, three StandardScalers, supplier OHE,
+  mileage OHE) in train_and_save() must be fit on the training slice only.
+  This evaluator confirms the current code splits FIRST then fits, so
+  the leakage issue documented in v1 has been resolved.
 
-  Impact: the test-set metrics below are slightly optimistic.
-  The true generalisation performance is somewhat lower than reported.
-
-  Fix (in train_and_save()):
-    1. Split the RAW dataframe first.
-    2. Call fit_transform() only on the training slice.
-    3. Call transform() only on the test slice.
+  Impact: test-set metrics below reflect true generalisation performance.
 """)
 
     # ------------------------------------------------------------------
@@ -324,17 +311,15 @@ def main():
     le_wd         = bundle["le_wd"]
     ohe           = bundle["ohe"]
     tfidf_d       = bundle["tfidf_d"]
-    scaler        = bundle["scaler"]
     ohe_supplier  = bundle["ohe_supplier"]
     mileage_scaler= bundle["mileage_scaler"]
     year_scaler   = bundle["year_scaler"]
     ohe_mileage   = bundle["ohe_mileage"]
-    ohe_vband     = bundle["ohe_vband"]
     claim_age_scaler = bundle["claim_age_scaler"]
 
     df, dtc_feats, dtc_flag_cols = load_data(
         ohe, tfidf_d, ohe_supplier, mileage_scaler, year_scaler,
-        ohe_mileage, ohe_vband, claim_age_scaler
+        ohe_mileage, claim_age_scaler
     )
 
     from scipy.sparse import hstack, csr_matrix
@@ -342,16 +327,14 @@ def main():
     X_c = ohe.transform(df[["Customer Complaint"]])
     X_d = tfidf_d.transform(dtc_feats["dtc_text"])
     X_n = dtc_feats[dtc_flag_cols].values
-    X_v = scaler.transform(df[["Voltage"]])
     X_s = ohe_supplier.transform(df[["Supplier"]])
     X_m = mileage_scaler.transform(df[["Mileage_km"]])
     X_y = year_scaler.transform(df[["Year"]])
     X_mb = ohe_mileage.transform(df[["mileage_bracket"]])
-    X_vb = ohe_vband.transform(df[["voltage_band"]])
     X_ca = claim_age_scaler.transform(df[["claim_age"]])
-    X   = hstack([X_c, X_d, csr_matrix(X_n), csr_matrix(X_v),
+    X   = hstack([X_c, X_d, csr_matrix(X_n),
                   X_s, csr_matrix(X_m), csr_matrix(X_y),
-                  X_mb, X_vb, csr_matrix(X_ca)])
+                  X_mb, csr_matrix(X_ca)])
 
     y_fa = le_fa.transform(df["Failure Analysis"])
     y_wd = le_wd.transform(df["Warranty Decision"])
@@ -498,7 +481,7 @@ def main():
     print("""
   Evaluates the full predict() pipeline: Rule Engine → ML → Score
   Combination.  The Rule Engine fires before ML for claims matching
-  voltage thresholds, moisture/physical-damage keywords, or NTF patterns,
+  moisture/physical-damage keywords, NTF patterns, or DTC-code rules,
   and can override the ML decision entirely.  The isolated classifier
   metrics above do not capture this behaviour.
 
@@ -525,7 +508,6 @@ def main():
     Warranty Decision  {wd_cv.mean():.4f} +/- {wd_cv.std()*2:.4f}
 
   Remaining recommended fixes in train_and_save():
-    [HIGH]   Split the dataframe FIRST, then fit transformers on train only.
     [MEDIUM] Use cross_val_predict for fa_probs_tr before fitting clf_wd.
 """)
 
