@@ -66,13 +66,13 @@ class TestLLMClientLogging:
                     mock_response.json.return_value = {
                         "choices": [{
                             "message": {
-                                "content": '{"customer_complaint": "Engine overheating", "dtc_codes": ["P0562"], "dtc_text": "P0562", "dtc_count": 1, "voltage": 14.2, "has_P": 1, "has_U": 0, "has_C": 0, "has_B": 0}'
+                                "content": '{"customer_complaint": "Engine overheating", "dtc_codes": ["P0562"], "dtc_text": "P0562", "dtc_count": 1, "has_P": 1, "has_U": 0, "has_C": 0, "has_B": 0}'
                             }
                         }]
                     }
                     mock_post.return_value = mock_response
                     
-                    llm_client.translate_to_ml_features("Engine overheating", "P0562", 14.2, "electrical_issue")
+                    llm_client.translate_to_ml_features("Engine overheating", "P0562", "electrical_issue")
                     
                     log_output = log_capture.getvalue()
                     assert "STAGE 3" in log_output or "Feature Translation" in log_output

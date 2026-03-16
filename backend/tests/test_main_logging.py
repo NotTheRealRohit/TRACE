@@ -42,8 +42,7 @@ class TestMainLogging:
                 client = TestClient(app)
                 response = client.post("/analyze", json={
                     "fault_code": "P0562",
-                    "technician_notes": "Engine overheating",
-                    "voltage": 14.2
+                    "technician_notes": "Engine overheating"
                 })
                 
                 log_output = log_capture.getvalue()
@@ -83,8 +82,7 @@ class TestMainLogging:
                 client = TestClient(app)
                 response = client.post("/analyze", json={
                     "fault_code": "P0562",
-                    "technician_notes": "Engine overheating",
-                    "voltage": 14.2
+                    "technician_notes": "Engine overheating"
                 })
                 
                 log_output = log_capture.getvalue()

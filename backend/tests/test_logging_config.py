@@ -67,10 +67,9 @@ class TestLoggingConfig:
         test_logger.setLevel(logging.INFO)
         
         decision_logger = DecisionLogger(test_logger)
-        decision_logger.log_stage(1, "LLM Understanding", fault_code="P0562", voltage=14.2)
+        decision_logger.log_stage(1, "LLM Understanding", fault_code="P0562")
         
         log_output = log_capture.getvalue()
         assert "[STAGE 1]" in log_output
         assert "LLM Understanding" in log_output
         assert "fault_code=P0562" in log_output
-        assert "voltage=14.2" in log_output

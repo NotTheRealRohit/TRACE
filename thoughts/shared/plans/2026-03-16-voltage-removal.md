@@ -2,553 +2,287 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** Remove voltage input field from both backend API and frontend, since ml_predictor.py no longer uses this parameter.
+**Goal:** Remove the voltage field from the FastAPI backend and HTML frontend since ml_predictor.py no longer uses this parameter.
 
-**Architecture:** Remove voltage from API schema (backend), remove voltage input field and validation (frontend), update all related CSS and JavaScript. The ml_predict() function already accepts only fault_code and technician_notes.
+**Architecture:** Remove voltage from API schema, remove voltage from frontend form, update logging - straightforward deletion task with validation tests.
 
-**Tech Stack:** FastAPI (backend), Vanilla HTML/JS (frontend), pytest (testing)
-
----
-
-## Pre-Flight Check
-
-Before starting, verify current state:
-
-```bash
-# Confirm ml_predict no longer accepts voltage
-grep -n "def predict" backend/ml_predictor.py
-# Expected: def predict(fault_code: str, technician_notes: str) -> dict:
-
-# Check current test suite works
-cd backend && python3 -m pytest tests/ -v --tb=short
-```
+**Tech Stack:** FastAPI (Python), Vanilla HTML/JavaScript
 
 ---
 
-## Task 1: Write Failing API Test (No Voltage)
+## Background
 
-**Files:**
-- Modify: `backend/tests/test_e2e.py`
-
-**Step 1: Add failing test for API without voltage**
-
-Add this test to `backend/tests/test_e2e.py` (after existing tests):
-
-```python
-    def test_analyze_endpoint_accepts_claim_without_voltage(self):
-        """API /analyze endpoint should accept claims without voltage field"""
-        import sys
-        import os
-        
-        # Set API key for test
-        with open('.env') as f:
-            content = f.read()
-        import re
-        match = re.search(r'OPENROUTER_API_KEY=(\S+)', content)
-        api_key = match.group(1).strip('"')
-        os.environ['OPENROUTER_API_KEY'] = api_key
-        
-        # Reload modules to pick up fresh environment
-        if 'ml_predictor' in sys.modules:
-            del sys.modules['ml_predictor']
-        if 'llm_client' in sys.modules:
-            del sys.modules['llm_client']
-        
-        from ml_predictor import predict
-        
-        # This should work without voltage parameter
-        result = predict("P0562", "Engine overheating")
-        
-        required_keys = ["status", "failure_analysis", "warranty_decision", 
-                        "confidence", "reason", "matched_complaint", "decision_engine"]
-        for key in required_keys:
-            assert key in result, f"Missing key: {key}"
-```
-
-**Step 2: Run test to verify it passes**
-
-```bash
-cd backend && python3 -m pytest tests/test_e2e.py::TestE2EIntegration::test_analyze_endpoint_accepts_claim_without_voltage -v
-```
-
-**Step 3: Commit**
-
-```bash
-git add backend/tests/test_e2e.py
-git commit -m "test: add test for predict() without voltage parameter"
-```
+The research document `thoughts/shared/research/2026-03-16-voltage-removal-research.md` identified all voltage references in:
+- `backend/main.py` - 3 locations (schema, logging, API call)
+- `frontend/index.html` - 5 locations (form field, placeholder, JS extraction, validation, request body)
 
 ---
 
-## Task 2: Remove Voltage from Backend API Schema
+## Phase 1: Backend Changes (main.py)
+
+### Task 1: Update ClaimRequest Schema
 
 **Files:**
 - Modify: `backend/main.py:38-50`
 
-**Step 1: Write failing test - API rejects voltage**
+**Step 1: Write the failing test**
 
-Add this test to `backend/tests/test_e2e.py`:
-
-```python
-    def test_api_claim_request_schema_no_voltage(self):
-        """ClaimRequest should NOT have voltage field"""
-        from main import ClaimRequest
-        
-        # Verify voltage is NOT in the schema
-        fields = ClaimRequest.model_fields
-        assert 'voltage' not in fields, "voltage field should be removed from ClaimRequest"
-        
-        # Verify required fields still exist
-        assert 'fault_code' in fields
-        assert 'technician_notes' in fields
-```
-
-**Step 2: Run test to verify it fails**
-
+Create test to verify API accepts claims without voltage:
 ```bash
-cd backend && python3 -m pytest tests/test_e2e.py::TestE2EIntegration::test_api_claim_request_schema_no_voltage -v
-# Expected: FAIL - voltage still in ClaimRequest
+cd backend
+python3 -c "
+import requests
+response = requests.post('http://localhost:8000/analyze', json={
+    'fault_code': 'P0562',
+    'technician_notes': 'Engine overheating'
+})
+print(f'Status: {response.status_code}')
+print(f'Response: {response.json()}')
+"
+```
+Expected: 422 Unprocessable Entity (voltage required)
+
+**Step 2: Run test to confirm it fails**
+```
+Status: 422
 ```
 
 **Step 3: Remove voltage from ClaimRequest schema**
 
-Edit `backend/main.py` lines 38-41:
-
+Edit `backend/main.py:41` - remove the voltage field line:
 ```python
 class ClaimRequest(BaseModel):
     fault_code:         str
-    technician_notes:    str
-    # voltage removed - no longer used by ml_predictor
+    technician_notes:   str
+    # voltage: float  # REMOVED
 ```
 
 **Step 4: Run test to verify it passes**
-
-```bash
-cd backend && python3 -m pytest tests/test_e2e.py::TestE2EIntegration::test_api_claim_request_schema_no_voltage -v
-# Expected: PASS
 ```
-
-**Step 5: Commit**
-
-```bash
-git add backend/main.py
-git commit -m "refactor: remove voltage from ClaimRequest schema"
+Status: 200
 ```
 
 ---
 
-## Task 3: Remove Voltage from API Logging and ml_predict Call
+### Task 2: Update ml_predict() call
 
 **Files:**
-- Modify: `backend/main.py:61-84`
+- Modify: `backend/main.py:73-78`
 
-**Step 1: Write failing test - API logs without voltage**
-
-Add this test to `backend/tests/test_e2e.py`:
-
-```python
-    def test_api_endpoint_logs_without_voltage(self):
-        """API /analyze endpoint should not log or pass voltage"""
-        import inspect
-        from main import analyze_claim
-        
-        # Get the source code of analyze_claim
-        source = inspect.getsource(analyze_claim)
-        
-        # Verify voltage is not in the logging or ml_predict call
-        assert 'voltage' not in source, "voltage should not appear in analyze_claim"
-```
-
-**Step 2: Run test to verify it fails**
+**Step 1: Write the failing test**
 
 ```bash
-cd backend && python3 -m pytest tests/test_e2e.py::TestE2EIntegration::test_api_endpoint_logs_without_voltage -v
-# Expected: FAIL - voltage still in logging and ml_predict call
+python3 -c "
+from main import app
+from fastapi.testclient import TestClient
+client = TestClient(app)
+response = client.post('/analyze', json={
+    'fault_code': 'P0562',
+    'technician_notes': 'Engine overheating'
+})
+print(f'Status: {response.status_code}')
+"
 ```
+Expected: TypeError (unexpected keyword argument 'voltage')
 
-**Step 3: Update analyze_claim function**
+**Step 2: Run test to confirm it fails**
 
-Edit `backend/main.py` lines 61-84:
+**Step 3: Remove voltage parameter from ml_predict() call**
 
+Edit `backend/main.py:73-78`:
 ```python
-@app.post("/analyze", response_model=ClaimResponse)
-def analyze_claim(claim: ClaimRequest):
-    """
-    Accepts warranty claim inputs from the TRACE frontend,
-    routes them through the ML predictor (hybrid rule + RandomForest),
-    and returns a structured warranty decision.
-    """
-    logger.info("REQUEST /analyze | fault_code=%s",
-                claim.fault_code)
-    
-    try:
-        result = ml_predict(
-            fault_code        = claim.fault_code,
-            technician_notes  = claim.technician_notes,
-        )
-        logger.info("RESPONSE /analyze | status=%s confidence=%.1f engine=%s",
-                    result["status"], result["confidence"], 
-                    result.get("decision_engine", "unknown"))
-        return ClaimResponse(**result)
-    except Exception as e:
-        logger.error("ERROR /analyze | %s: %s", type(e).__name__, str(e),
-                     exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Prediction error: {str(e)}")
+try:
+    result = ml_predict(
+        fault_code        = claim.fault_code,
+        technician_notes  = claim.technician_notes,
+    )
 ```
 
 **Step 4: Run test to verify it passes**
 
+---
+
+### Task 3: Update logging
+
+**Files:**
+- Modify: `backend/main.py:68-69`
+
+**Step 1: Write the failing test**
+
+Verify logging works without voltage:
 ```bash
-cd backend && python3 -m pytest tests/test_e2e.py::TestE2EIntegration::test_api_endpoint_logs_without_voltage -v
-# Expected: PASS
+python3 -c "
+import logging
+logging.basicConfig(level=logging.INFO)
+from main import app
+from fastapi.testclient import TestClient
+client = TestClient(app)
+response = client.post('/analyze', json={
+    'fault_code': 'P0562',
+    'technician_notes': 'Engine overheating'
+})
+" 2>&1 | grep "REQUEST /analyze"
+```
+Expected: Should show voltage in log (old behavior)
+
+**Step 2: Run test to confirm it fails**
+
+**Step 3: Remove voltage from log statement**
+
+Edit `backend/main.py:68-69`:
+```python
+logger.info("REQUEST /analyze | fault_code=%s",
+            claim.fault_code)
 ```
 
-**Step 5: Commit**
-
-```bash
-git add backend/main.py
-git commit -m "refactor: remove voltage from API logging and ml_predict call"
-```
+**Step 4: Run test to verify it passes**
 
 ---
 
-## Task 4: Remove Voltage Input Field from Frontend HTML
+## Phase 2: Frontend Changes (index.html)
+
+### Task 4: Remove voltage input field
 
 **Files:**
 - Modify: `frontend/index.html:446-453`
 
-**Step 1: Write failing test - frontend has no voltage field**
+**Step 1: Write the failing test**
 
-Add this test to `backend/tests/test_e2e.py`:
+Verify frontend requires voltage (current behavior):
+- Open frontend in browser
+- Try to submit without voltage
+Expected: Blocked by validation
 
-```python
-    def test_frontend_has_no_voltage_input(self):
-        """Frontend should not have voltage input field"""
-        import os
-        frontend_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), '..', 'frontend', 'index.html')
-        with open(frontend_path, 'r') as f:
-            content = f.read()
-        
-        # Verify voltage input is removed
-        assert 'id="voltage"' not in content, "voltage input should be removed"
-        assert 'Voltage Reading' not in content, "Voltage label should be removed"
-```
+**Step 2: Remove voltage HTML field**
 
-**Step 2: Run test to verify it fails**
-
-```bash
-cd backend && python3 -m pytest tests/test_e2e.py::TestE2EIntegration::test_frontend_has_no_voltage_input -v
-# Expected: FAIL - voltage field still exists
-```
-
-**Step 3: Remove voltage input HTML**
-
-Edit `frontend/index.html` lines 446-453:
-
+Edit `frontend/index.html:446-453` - remove the entire voltage field div:
 ```html
-    <!-- Voltage field removed - no longer needed for prediction -->
-
-    <div class="field">
-      <label>Technician Notes</label>
+<!-- REMOVE THIS BLOCK:
+<div class="field">
+  <label>Voltage Reading</label>
+  <div class="voltage-row">
+    <input type="number" id="voltage" placeholder="e.g. 14.2" step="0.1" min="0" max="30"/>
+    <span class="voltage-unit">V</span>
+  </div>
+  <div class="hint">Normal range: 11–16 V · Over-voltage (&gt;16 V) triggers EOS rejection</div>
+</div>
+-->
 ```
 
-**Step 4: Run test to verify it passes**
-
-```bash
-cd backend && python3 -m pytest tests/test_e2e.py::TestE2EIntegration::test_frontend_has_no_voltage_input -v
-# Expected: PASS
-```
-
-**Step 5: Commit**
-
-```bash
-git add frontend/index.html
-git commit -m "refactor: remove voltage input field from frontend"
-```
+**Step 3: Verify frontend works without voltage field**
 
 ---
 
-## Task 5: Remove Voltage Placeholder Text
+### Task 5: Remove voltage from JavaScript
 
 **Files:**
-- Modify: `frontend/index.html:470-476`
+- Modify: `frontend/index.html:537-548`
 
-**Step 1: Write failing test**
+**Step 1: Write the failing test**
 
-```python
-    def test_frontend_placeholder_no_voltage(self):
-        """Frontend placeholder should not mention voltage"""
-        import os
-        frontend_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), '..', 'frontend', 'index.html')
-        with open(frontend_path, 'r') as f:
-            content = f.read()
-        
-        assert 'Input voltage reading' not in content, "voltage placeholder should be removed"
-```
-
-**Step 2: Run test to verify it fails**
-
-```bash
-cd backend && python3 -m pytest tests/test_e2e.py::TestE2EIntegration::test_frontend_placeholder_no_voltage -v
-# Expected: FAIL
-```
-
-**Step 3: Remove voltage placeholder**
-
-Edit `frontend/index.html` lines 470-476:
-
-```html
-    <div id="result-placeholder">
-      &gt; Awaiting claim data...<br>
-      &gt; Load ECU fault codes<br>
-      &gt; Enter technician observations<br>
-      &gt; Run analysis
-    </div>
-```
-
-**Step 4: Run test to verify it passes**
-
-```bash
-cd backend && python3 -m pytest tests/test_e2e.py::TestE2EIntegration::test_frontend_placeholder_no_voltage -v
-# Expected: PASS
-```
-
-**Step 5: Commit**
-
-```bash
-git add frontend/index.html
-git commit -m "refactor: remove voltage placeholder text"
-```
-
----
-
-## Task 6: Remove Voltage from Frontend JavaScript
-
-**Files:**
-- Modify: `frontend/index.html:535-572`
-
-**Step 1: Write failing test**
-
-```python
-    def test_frontend_js_no_voltage(self):
-        """Frontend JavaScript should not reference voltage"""
-        import os
-        frontend_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), '..', 'frontend', 'index.html')
-        with open(frontend_path, 'r') as f:
-            content = f.read()
-        
-        # Check JavaScript section (between <script> and </script>)
-        import re
-        script_match = re.search(r'<script>(.*?)</script>', content, re.DOTALL)
-        if script_match:
-            js_content = script_match.group(1)
-            assert 'voltage' not in js_content.lower(), "voltage should not be in JavaScript"
-```
-
-**Step 2: Run test to verify it fails**
-
-```bash
-cd backend && python3 -m pytest tests/test_e2e.py::TestE2EIntegration::test_frontend_js_no_voltage -v
-# Expected: FAIL
-```
-
-**Step 3: Update JavaScript to remove voltage**
-
-Edit `frontend/index.html` lines 535-556:
-
+Verify current code has voltage in request body:
 ```javascript
-  async function analyzeClaim() {
-    const fault_code       = document.getElementById("fault_code").value.trim();
-    const technician_notes = document.getElementById("technician_notes").value.trim();
-
-    if (!technician_notes && !fault_code) {
-      flashInput(); return;
-    }
-
-    setBusy(true);
-
-    try {
-      const resp = await fetch(API_URL, {
-        method:  "POST",
-        headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ fault_code, technician_notes }),
-      });
+// Current: body: JSON.stringify({ fault_code, technician_notes, voltage })
 ```
 
-**Step 4: Run test to verify it passes**
+**Step 2: Remove voltage variable and validation**
 
-```bash
-cd backend && python3 -m pytest tests/test_e2e.py::TestE2EIntegration::test_frontend_js_no_voltage -v
-# Expected: PASS
+Edit lines around 537-548:
+```javascript
+async function analyzeClaim() {
+  const fault_code       = document.getElementById("fault_code").value.trim();
+  const technician_notes = document.getElementById("technician_notes").value.trim();
+
+  if (!technician_notes && !fault_code) {
+    flashInput(); return;
+  }
+  // REMOVED: voltage validation block
+  
+  // ... rest of function
+  body: JSON.stringify({ fault_code, technician_notes }),  // REMOVED voltage
 ```
 
-**Step 5: Commit**
+**Step 3: Verify submission works**
 
-```bash
-git add frontend/index.html
-git commit -m "refactor: remove voltage from frontend JavaScript"
+---
+
+### Task 6: Update placeholder text
+
+**Files:**
+- Modify: `frontend/index.html:472`
+
+**Step 1: Remove voltage from placeholder**
+
+Edit `frontend/index.html:472`:
+```html
+<div id="result-placeholder">
+  &gt; Awaiting claim data...<br>
+  &gt; Load ECU fault codes<br>
+  &gt; Enter technician observations<br>
+  &gt; Run analysis
+</div>
 ```
 
 ---
 
-## Task 7: Remove Unused CSS for Voltage Row
+## Phase 3: Verification
 
-**Files:**
-- Modify: `frontend/index.html:198-206`
+### Task 7: End-to-end verification
 
-**Step 1: Write failing test**
-
-```python
-    def test_frontend_css_no_voltage(self):
-        """Frontend CSS should not have voltage-related styles"""
-        import os
-        frontend_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), '..', 'frontend', 'index.html')
-        with open(frontend_path, 'r') as f:
-            content = f.read()
-        
-        # Check style section
-        style_match = re.search(r'<style>(.*?)</style>', content, re.DOTALL)
-        if style_match:
-            css_content = style_match.group(1)
-            assert '.voltage-row' not in css_content, "voltage-row CSS should be removed"
-```
-
-**Step 2: Run test to verify it fails**
+**Step 1: Run backend tests**
 
 ```bash
-cd backend && python3 -m pytest tests/test_e2e.py::TestE2EIntegration::test_frontend_css_no_voltage -v
-# Expected: FAIL
+cd backend
+python3 -m pytest backend/tests/ -v
 ```
 
-**Step 3: Remove voltage CSS**
-
-Edit `frontend/index.html` lines 198-206:
-
-```css
-    /* Voltage row styles removed */
-
-    /* ── Analyze button ── */
-```
-
-**Step 4: Run test to verify it passes**
+**Step 2: Start server and test API**
 
 ```bash
-cd backend && python3 -m pytest tests/test_e2e.py::TestE2EIntegration::test_frontend_css_no_voltage -v
-# Expected: PASS
-```
-
-**Step 5: Commit**
-
-```bash
-git add frontend/index.html
-git commit -m "refactor: remove voltage CSS from frontend"
-```
-
----
-
-## Task 8: Full Integration Test
-
-**Files:**
-- Test: End-to-end flow
-
-**Step 1: Run all voltage-related tests**
-
-```bash
-cd backend && python3 -m pytest tests/test_e2e.py -v -k "voltage"
-# Expected: All PASS
-```
-
-**Step 2: Run full test suite**
-
-```bash
-cd backend && python3 -m pytest tests/ -v --tb=short
-# Expected: All tests PASS
-```
-
-**Step 3: Manual verification - API**
-
-```bash
-# Test API without voltage
+uvicorn main:app --reload --port 8000
+# In another terminal:
 curl -X POST http://localhost:8000/analyze \
   -H "Content-Type: application/json" \
   -d '{"fault_code": "P0562", "technician_notes": "Engine overheating"}'
-# Expected: Valid JSON response with warranty decision
 ```
 
-**Step 4: Manual verification - Frontend**
+Expected: Valid response without voltage
 
-Open `frontend/index.html` in browser:
-- Verify voltage input field is gone
-- Verify form submits with just fault_code and technician_notes
-- Verify result displays correctly
+**Step 3: Verify frontend loads**
 
-**Step 5: Commit**
+Open `frontend/index.html` in browser - voltage field should be gone, form should submit successfully.
+
+---
+
+## Summary of Changes
+
+| File | Line(s) | Change |
+|------|---------|--------|
+| `backend/main.py` | 41 | Remove `voltage: float` from ClaimRequest |
+| `backend/main.py` | 68-69 | Remove voltage from log statement |
+| `backend/main.py` | 75 | Remove voltage from ml_predict() call |
+| `frontend/index.html` | 446-453 | Remove voltage input HTML |
+| `frontend/index.html` | 472 | Remove voltage from placeholder |
+| `frontend/index.html` | 537 | Remove voltage variable |
+| `frontend/index.html` | 543-548 | Remove voltage validation |
+| `frontend/index.html` | 556 | Remove voltage from JSON body |
+
+---
+
+## Testing Commands
 
 ```bash
-git add -A
-git commit -m "refactor: complete voltage removal from API and frontend"
+# Backend tests
+cd backend && python3 -m pytest backend/tests/ -v
+
+# API smoke test (no voltage)
+curl -X POST http://localhost:8000/analyze \
+  -H "Content-Type: application/json" \
+  -d '{"fault_code": "P0562", "technician_notes": "Engine overheating"}'
+
+# Frontend - open in browser and verify voltage field gone
 ```
 
 ---
 
-## Task 9: Lint and Typecheck
-
-**Files:**
-- Lint: All modified files
-
-**Step 1: Run linting**
-
-```bash
-cd backend && python3 -m ruff check main.py ml_predictor.py
-# Expected: No errors
-```
-
-**Step 2: Run formatting**
-
-```bash
-cd backend && python3 -m black main.py --diff
-# Review changes
-```
-
-**Step 3: Final test run**
-
-```bash
-cd backend && python3 -m pytest tests/ -v --tb=short
-# Expected: All tests PASS
-```
-
----
-
-## Success Criteria
-
-### Automated Verification:
-- [ ] All TDD tests written before implementation (RED confirmed)
-- [ ] `pytest tests/test_e2e.py -k "voltage"` all pass
-- [ ] `pytest tests/` full suite passes
-- [ ] No lint errors: `ruff check backend/`
-
-### Manual Verification:
-- [ ] API accepts claim without voltage: `curl -X POST http://localhost:8000/analyze -H "Content-Type: application/json" -d '{"fault_code": "P0562", "technician_notes": "Engine overheating"}'`
-- [ ] Frontend displays without voltage input field
-- [ ] Frontend form submits and displays result correctly
-
----
-
-## Rollback Plan
-
-If issues occur:
-
-```bash
-# Revert all changes
-git revert HEAD
-# Or revert specific file
-git checkout HEAD~1 -- backend/main.py frontend/index.html
-```
-
----
-
-## References
-
-- Research: `thoughts/shared/research/2026-03-16-voltage-removal-research.md`
-- Original ml_predictor.py: `backend/ml_predictor.py:654`
-- API endpoint: `backend/main.py:61`
+**Plan complete.**

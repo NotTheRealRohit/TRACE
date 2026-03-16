@@ -38,7 +38,6 @@ app.add_middleware(
 class ClaimRequest(BaseModel):
     fault_code:         str
     technician_notes:   str
-    voltage:            float
 
 class ClaimResponse(BaseModel):
     status:             str     # Approved | Rejected | Needs Manual Review
@@ -65,14 +64,13 @@ def analyze_claim(claim: ClaimRequest):
     routes them through the ML predictor (hybrid rule + RandomForest),
     and returns a structured warranty decision.
     """
-    logger.info("REQUEST /analyze | fault_code=%s voltage=%s",
-                claim.fault_code, claim.voltage)
+    logger.info("REQUEST /analyze | fault_code=%s technician_notes=%s",
+                claim.fault_code, claim.technician_notes[:50])
     
     try:
         result = ml_predict(
             fault_code        = claim.fault_code,
             technician_notes  = claim.technician_notes,
-            voltage           = claim.voltage,
         )
         logger.info("RESPONSE /analyze | status=%s confidence=%.1f engine=%s",
                     result["status"], result["confidence"], 

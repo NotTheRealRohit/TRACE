@@ -14,43 +14,36 @@ API_KEY_SET = bool(os.getenv("OPENROUTER_API_KEY"))
 SAMPLE_OVERVOLTAGE = {
     "fault_code": "P0562",
     "technician_notes": "Customer reports intermittent power loss",
-    "voltage": 17.5
 }
 
 SAMPLE_MOISTURE = {
     "fault_code": "B1234",
     "technician_notes": "Corrosion found inside ECU housing, moisture present",
-    "voltage": 12.5
 }
 
 SAMPLE_NTF = {
     "fault_code": "P0441",
     "technician_notes": "No fault found, intermittent complaint, cannot reproduce",
-    "voltage": 13.0
 }
 
 SAMPLE_UCODE = {
     "fault_code": "U0100",
     "technician_notes": "CAN bus communication error reported",
-    "voltage": 12.5
 }
 
 SAMPLE_PCODE_ENGINE = {
     "fault_code": "P0301",
     "technician_notes": "Engine jerking during acceleration, rough idle",
-    "voltage": 13.5
 }
 
 SAMPLE_NO_RULE = {
     "fault_code": "X9999",
     "technician_notes": "Customer complaint about dashboard light",
-    "voltage": 13.0
 }
 
 SAMPLE_PHYSICAL = {
     "fault_code": "C0045",
     "technician_notes": "Visible crack on connector, impact damage observed",
-    "voltage": 12.5
 }
 
 from ml_predictor import (
@@ -125,49 +118,35 @@ class TestA2MatchComplaint:
 class TestA3RunRules:
     """A3 — run_rules() unit tests"""
 
-    def test_run_rules_over_voltage(self):
-        r = run_rules("P0562", "some notes", 17.5)
-        assert r["rule_fired"] is True
-        assert r["rule_id"] == "over_voltage"
-
-    def test_run_rules_low_voltage(self):
-        r = run_rules("P0562", "some notes", 9.0)
-        assert r["rule_fired"] is True
-        assert r["rule_id"] == "low_voltage"
-
     def test_run_rules_moisture(self):
-        r = run_rules("B1234", "moisture found inside ECU", 12.5)
+        r = run_rules("B1234", "moisture found inside ECU")
         assert r["rule_fired"] is True
         assert r["rule_id"] == "moisture"
 
     def test_run_rules_physical_damage(self):
-        r = run_rules("C0045", "crack visible on connector", 12.5)
+        r = run_rules("C0045", "crack visible on connector")
         assert r["rule_fired"] is True
         assert r["rule_id"] == "physical_damage"
 
     def test_run_rules_ntf(self):
-        r = run_rules("P0441", "no fault found", 13.0)
+        r = run_rules("P0441", "no fault found")
         assert r["rule_fired"] is True
         assert r["rule_id"] == "ntf"
 
     def test_run_rules_u_code(self):
-        r = run_rules("U0100", "CAN bus error", 12.5)
+        r = run_rules("U0100", "CAN bus error")
         assert r["rule_fired"] is True
         assert r["rule_id"] == "u_code"
 
     def test_run_rules_no_match(self):
-        r = run_rules("X9999", "dashboard light on", 13.0)
+        r = run_rules("X9999", "dashboard light on")
         assert r["rule_fired"] is False
 
     def test_run_rules_returns_required_keys_when_fired(self):
-        r = run_rules("P0562", "notes", 17.5)
+        r = run_rules("B1234", "moisture found")
         for key in ["rule_id", "status", "warranty_decision", "rule_confidence",
                     "failure_analysis", "reason", "rule_fired"]:
             assert key in r, f"Missing key: {key}"
-
-    def test_run_rules_voltage_priority_over_keyword(self):
-        r = run_rules("P0562", "moisture found everywhere", 17.5)
-        assert r["rule_id"] == "over_voltage"
 
 
 class TestA4RunML:
@@ -366,29 +345,16 @@ class TestA7PredictIntegration:
         ]
 
     def test_predict_does_not_crash_on_empty_notes(self):
-        r = predict(fault_code="P0562", technician_notes="", voltage=13.0)
+        r = predict(fault_code="P0562", technician_notes="")
         assert "status" in r
 
     def test_predict_does_not_crash_on_empty_dtc(self):
-        r = predict(fault_code="", technician_notes="Engine jerking badly", voltage=13.0)
-        assert "status" in r
-
-    def test_predict_does_not_crash_on_extreme_voltage(self):
-        r = predict(fault_code="P0562", technician_notes="Some notes here", voltage=999.9)
+        r = predict(fault_code="", technician_notes="Engine jerking badly")
         assert "status" in r
 
 
 class TestB1RulePriority:
     """B1 — Rule Priority and Correctness"""
-
-    def test_overvoltage_always_rejected(self):
-        r = predict(**SAMPLE_OVERVOLTAGE)
-        assert r["status"] == "Rejected"
-        assert r["warranty_decision"] == "Customer Failure"
-
-    def test_overvoltage_confidence_is_94(self):
-        r = predict(**SAMPLE_OVERVOLTAGE)
-        assert r["confidence"] >= 85.0
 
     def test_moisture_is_rejected_customer_failure(self):
         r = predict(**SAMPLE_MOISTURE)
@@ -413,10 +379,6 @@ class TestB1RulePriority:
         r = predict(**SAMPLE_PHYSICAL)
         assert r["status"] == "Rejected"
         assert r["warranty_decision"] == "Customer Failure"
-
-    def test_voltage_rule_takes_priority_over_dtc(self):
-        r = predict(fault_code="U0100", technician_notes="CAN error", voltage=18.0)
-        assert r["status"] == "Rejected"
 
 
 class TestB2CombineLogic:
@@ -484,15 +446,15 @@ class TestB3MLAlwaysRuns:
     """B3 — ML Always Runs"""
 
     def test_ml_runs_even_when_rule_fires(self):
-        fc, notes, v = "P0562", "moisture inside connector", 12.5
-        rule_result = run_rules(fc, notes, v)
+        fc, notes = "B1234", "moisture inside connector"
+        rule_result = run_rules(fc, notes)
         assert rule_result["rule_fired"] is True
 
         dtc_f = extract_dtc_features(fc)
         features = {
             "customer_complaint": match_complaint(notes),
             "dtc_text": dtc_f["dtc_text"], "dtc_count": dtc_f["dtc_count"],
-            "voltage": v, "has_P": dtc_f["has_P"], "has_U": dtc_f["has_U"],
+            "voltage": 12.5, "has_P": dtc_f["has_P"], "has_U": dtc_f["has_U"],
             "has_C": dtc_f["has_C"], "has_B": dtc_f["has_B"],
         }
         ml_result = run_ml(features)
@@ -569,8 +531,6 @@ class TestV9DataPath:
         from ml_predictor import RULES
         rule_conf = {r['id']: r['confidence'] for r in RULES}
         expected = {
-            'over_voltage': 93.0,
-            'low_voltage': 95.0,
             'moisture': 91.0,
             'physical_damage': 88.5,
             'ntf': 95.0,

@@ -39,7 +39,7 @@ class TestE2EIntegration:
             del sys.modules['ml_predictor']
         
         from ml_predictor import predict
-        result = predict("P0562", "Water found in connector", 12.5)
+        result = predict("P0562", "Water found in connector")
         
         assert result["decision_engine"] == "LLM"
         assert result["status"] == "Rejected"
@@ -55,7 +55,7 @@ class TestE2EIntegration:
         
         from ml_predictor import predict
         
-        result = predict("P0562", "Engine overheating", 14.2)
+        result = predict("P0562", "Engine overheating")
         
         assert result["decision_engine"] in ["Rule-based", "ML model"]
 
@@ -76,7 +76,7 @@ class TestE2EIntegration:
             del sys.modules['llm_client']
         
         from ml_predictor import predict
-        result = predict("P0562", "Engine overheating, low idle", 14.2)
+        result = predict("P0562", "Engine overheating, low idle")
         
         required_keys = ["status", "failure_analysis", "warranty_decision", 
                         "confidence", "reason", "matched_complaint", "decision_engine"]
@@ -112,7 +112,7 @@ class TestE2EIntegration:
             del sys.modules['ml_predictor']
         
         from ml_predictor import predict
-        result = predict("P0562", "No fault found, intermittent", 12.5)
+        result = predict("P0562", "No fault found, intermittent")
         
         assert result["decision_engine"] == "LLM"
         assert result["status"] == "Approved"
@@ -144,7 +144,7 @@ class TestE2EIntegration:
             del sys.modules['ml_predictor']
         
         from ml_predictor import predict
-        result = predict("U0100", "CAN bus communication error", 12.5)
+        result = predict("U0100", "CAN bus communication error")
         
         assert result["decision_engine"] == "LLM"
         assert result["status"] == "Approved"
