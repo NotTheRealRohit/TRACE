@@ -549,3 +549,44 @@ class TestB5OutputSchema:
             "High fuel consumption", "OBD Light ON", "Vehicle not starting",
             "Low pickup", "Engine overheating", "Rough idling", "Brake warning light ON"
         ]
+
+
+class TestV9DataPath:
+    """V9 Integration Tests - Dataset v9 migration"""
+
+    def test_data_path_points_to_v9(self):
+        from ml_predictor import DATA_PATH
+        assert "v9" in DATA_PATH, f"Expected v9 in path, got {DATA_PATH}"
+
+    def test_high_value_dtcs_includes_v9_codes(self):
+        from ml_predictor import HIGH_VALUE_DTCS
+        v9_important = ['P0302', 'P0303', 'P0305', 'P0306', 'P0351', 'P0352', 
+                        'P0562', 'P0563', 'U0001', 'U0100', 'B1234', 'C0031']
+        for dtc in v9_important:
+            assert dtc in HIGH_VALUE_DTCS, f"{dtc} not in HIGH_VALUE_DTCS"
+
+    def test_rule_confidences_match_v9(self):
+        from ml_predictor import RULES
+        rule_conf = {r['id']: r['confidence'] for r in RULES}
+        expected = {
+            'over_voltage': 93.0,
+            'low_voltage': 95.0,
+            'moisture': 91.0,
+            'physical_damage': 88.5,
+            'ntf': 95.0,
+            'u_code': 57.0,
+            'p_code_engine': 80.5,
+            'c_code': 80.0,
+            'b_code': 80.0,
+        }
+        for rid, exp_conf in expected.items():
+            actual = rule_conf.get(rid)
+            assert actual == exp_conf, f"{rid}: expected {exp_conf}, got {actual}"
+
+    def test_header_docstring_mentions_v9(self):
+        import os
+        ml_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'ml_predictor.py')
+        with open(ml_path, 'r') as f:
+            content = f.read()
+        assert 'synthetic_warranty_claims_v9.csv' in content, "Header should mention v9"
+        assert '100 000 rows' in content or '100K' in content, "Header should mention 100K"

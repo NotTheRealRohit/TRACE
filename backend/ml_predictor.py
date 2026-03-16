@@ -3,9 +3,10 @@
 TRACE ML Predictor  —  Hybrid LLM + Rule + ML Engine
 ------------------------------------------------------
 Dataset
-  synthetic_warranty_claims_v2.csv (50 000 rows, 2019-2024).
-  Synthetically generated with strong domain-consistent feature-target correlations across voltage, 
-  DTC prefix, and warranty decision — designed so that rule-based and ML features carry real predictive weight.
+  synthetic_warranty_claims_v9.csv (100 000 rows, 2019-2025).
+  Synthetically generated with real-world-like noise levels - pattern 
+  correlations are approximately 93-96% rather than 100%, making this 
+  a more realistic training dataset that better reflects production data.
 
 Six-Stage Prediction Pipeline  (predict())
   Stage 1 — LLM Claim Understanding (optional)
@@ -15,28 +16,30 @@ Six-Stage Prediction Pipeline  (predict())
 
   Stage 2 — Rule Engine  (run_rules())
       Nine deterministic automotive rules evaluated in priority order:
-        • over_voltage    (V > 16 V  → Customer Failure / Rejected,   94 %)
-        • low_voltage     (V < 11 V  → Production Failure / Approved, 83 %)
+        • over_voltage    (V > 16 V  → Customer Failure / Rejected,   93 %)
+        • low_voltage     (V < 11 V  → Production Failure / Approved, 95 %)
         • moisture        (keyword match in notes → Customer Failure,  91 %)
         • physical_damage (keyword match          → Customer Failure,  88.5 %)
-        • ntf             (No-Trouble-Found keywords → Acc. to Spec,  82 %)
-        • u_code          (U-series DTC → Production Failure,          85 %)
+        • ntf             (No-Trouble-Found keywords → Acc. to Spec, 95 %)
+        • u_code          (U-series DTC → Production Failure,          57 %)
         • p_code_engine   (P0-series + symptom keyword → Prod. Failure, 80.5 %)
-        • c_code          (C-series DTC → Production Failure,          78 %)
-        • b_code          (B-series DTC → Production Failure,          76 %)
+        • c_code          (C-series DTC → Production Failure,          80 %)
+        • b_code          (B-series DTC → Production Failure,          80 %)
       First matching rule wins; returns rule_id, status, warranty_decision,
       confidence, failure_analysis, and a human-readable reason string.
+      Note: Rule confidences have been recalibrated for v9's noisy patterns.
 
   Stage 3 — Feature Extraction
       If LLM is available: llm_client.translate_to_ml_features() maps the
       raw claim to structured ML features.
       Fallback: extract_dtc_features() parses DTC codes into prefix flags
-      (has_P/U/C/B), count, high-value DTC one-hot flags, and TF-IDF text;
-      match_complaint() fuzzy-maps free-text notes to a known complaint label.
+      (has_P/U/C/B), count, high-value DTC one-hot flags (90+ DTCs),
+      and TF-IDF text; match_complaint() fuzzy-maps free-text notes 
+      to a known complaint label.
 
   Stage 4 — Cascaded RandomForest Scoring  (run_ml())
       Two RF classifiers (200 estimators each) trained on:
-        Customer Complaint (OHE) · DTC text (TF-IDF 40) · DTC flags ·
+        Customer Complaint (OHE) · DTC text (TF-IDF 40) · DTC flags (90+) ·
         Voltage (scaled) · Supplier (OHE) · Mileage_km (scaled) · Year (scaled)
       Classifier 1 — Failure Analysis (root cause).
       Classifier 2 — Warranty Decision, whose feature matrix is augmented
@@ -89,7 +92,7 @@ warnings.filterwarnings("ignore")
 
 BASE_DIR   = os.path.dirname(os.path.abspath(__file__))
 MODEL_PATH = os.path.join(BASE_DIR, "trace_models.pkl")
-DATA_PATH  = os.path.join(BASE_DIR, "synthetic_warranty_claims_v2.csv")
+DATA_PATH  = os.path.join(BASE_DIR, "synthetic_warranty_claims_v9.csv")
 
 KNOWN_COMPLAINTS = [
     "Engine jerking during acceleration", "Starting Problem",
@@ -100,8 +103,37 @@ KNOWN_COMPLAINTS = [
 ]
 
 HIGH_VALUE_DTCS = [
+    # Original 9 codes
     "P0300", "P0615", "P0481", "P1682", "P0301",
-    "P0480", "P0073", "P0304", "P0482"
+    "P0480", "P0073", "P0304", "P0482",
+    # v9 additions - frequent DTCs with strong warranty signal
+    "P0302", "P0303", "P0305", "P0306",  # Misfire codes
+    "P0351", "P0352", "P0353", "P0354", "P0355", "P0356",  # Ignition
+    "P0562", "P0563",  # OBD processor codes
+    "P0601", "P0602", "P0604", "P0605", "P0606", "P0607", "P0608",  # Processor
+    "P0610", "P0611", "P0613", "P0616", "P0617",  # Processor cont.
+    "P0620", "P0691", "P0692", "P0693", "P0694",  # Power supply
+    "P0420", "P0430",  # Catalyst
+    "P0455", "P0456", "P0457",  # Evap
+    "P0500", "P0501", "P0502",  # Vehicle speed
+    "P0720",  # Output shaft speed
+    "U0001", "U0002", "U0028", "U0029",  # CAN bus
+    "U0037", "U0038",  # LIN bus
+    "U0073", "U0100", "U0101", "U0103",  # Network communication
+    "U0114", "U0121", "U0122", "U0128",  # Network cont.
+    "U0131", "U0140", "U0155", "U0164", "U0184",  # Network cont.
+    "U0401", "U0402", "U0422",  # Network invalid data
+    "B1031", "B1045", "B1234", "B2960", "B3055",  # Body
+    "C0031", "C0036", "C0045", "C0051", "C0082", "C0265", "C0460", "C0550",  # Chassis
+    "P0038", "P0054", "P0069", "P0072",  # Sensor (O2/temp)
+    "P0096", "P0097", "P0098",  # Intake air
+    "P0101", "P0104", "P0111", "P0112", "P0113",  # MAF/IAT
+    "P0116", "P0117", "P0118", "P0128",  # Coolant temp
+    "P0131", "P0135", "P0141", "P0161",  # O2 sensor
+    "P0171", "P0174",  # Fuel system
+    "P0196", "P0197",  # Oil temp
+    "P0316", "P0316", "P0325", "P0327", "P0328",  # Knock/ckp
+    "P0340", "P0341", "P0342", "P0343",  # CMP
 ]
 
 RULES = [
@@ -111,7 +143,7 @@ RULES = [
         "failure_analysis":  "Track burnt due to EOS",
         "warranty_decision": "Customer Failure",
         "status":            "Rejected",
-        "confidence":        94.0,
+        "confidence":        93.0,  # v9 recalibrated
         "reason":            "Over-voltage detected ({v:.1f} V > 16 V). EOS is a customer-side fault.",
     },
     {
@@ -120,7 +152,7 @@ RULES = [
         "failure_analysis":  "controller failure due to supplier production failure",
         "warranty_decision": "Production Failure",
         "status":            "Approved",
-        "confidence":        83.0,
+        "confidence":        95.0,  # v9 recalibrated
         "reason":            "Low supply voltage ({v:.1f} V < 11 V). Under-voltage points to faulty voltage regulator — production defect.",
     },
     {
@@ -150,7 +182,7 @@ RULES = [
         "failure_analysis":  "NTF",
         "warranty_decision": "According to Specification",
         "status":            "Approved",
-        "confidence":        82.0,
+        "confidence":        95.0,  # v9 recalibrated
         "reason":            "No Trouble Found (NTF) — vehicle operating within specification limits.",
     },
     {
@@ -159,7 +191,7 @@ RULES = [
         "failure_analysis":  "controller failure due to supplier production failure",
         "warranty_decision": "Production Failure",
         "status":            "Approved",
-        "confidence":        85.0,
+        "confidence":        57.0,  # v9 recalibrated - much lower due to noise
         "reason":            "U-series DTC (CAN/LIN communication fault) indicates ECU/controller internal failure — likely production defect.",
     },
     {
@@ -180,7 +212,7 @@ RULES = [
         "failure_analysis":  "Connector damage",
         "warranty_decision": "Production Failure",
         "status":            "Approved",
-        "confidence":        78.0,
+        "confidence":        80.0,  # v9 recalibrated
         "reason":            "C-series DTC (chassis/braking system). Connector damage is the most common root cause for this code range.",
     },
     {
@@ -189,7 +221,7 @@ RULES = [
         "failure_analysis":  "Connector damage",
         "warranty_decision": "Production Failure",
         "status":            "Approved",
-        "confidence":        76.0,
+        "confidence":        80.0,  # v9 recalibrated
         "reason":            "B-series DTC (body electronics). Consistent with connector or wiring loom damage.",
     },
 ]
