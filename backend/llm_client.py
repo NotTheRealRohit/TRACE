@@ -37,14 +37,13 @@ Categories:
 - moisture_damage: water, moisture, wet, flood, rain, humidity, corrosion
 - physical_damage: crack, broken, impact, collision, bent, misuse, dropped
 - ntf: no fault found, ntf, no trouble, no issue, no defect, intermittent, cannot reproduce
-- electrical_issue: voltage abnormal, electrical short, wiring, connector
+- electrical_issue: electrical short, wiring, connector
 - engine_symptom: jerking, pickup, acceleration, overheating, fuel, idle, rough
 - communication_fault: CAN bus, LIN bus, communication error, U-code
 - other: none of the above
 
 Technician Notes: {notes}
 DTC Code: {dtc_code}
-Measured Voltage: {voltage}
 
 Respond ONLY with JSON in this exact format:
 {{
@@ -56,14 +55,13 @@ Respond ONLY with JSON in this exact format:
 """
 
 
-def categorize_notes(notes: str, dtc_code: str, voltage: Optional[float], timeout: int = 30) -> dict:
+def categorize_notes(notes: str, dtc_code: str, timeout: int = 30) -> dict:
     """
     Call OpenRouter LLM to categorize technician notes.
 
     Args:
         notes: Technician's free-text notes
         dtc_code: Fault code (e.g., "P0562")
-        voltage: Measured voltage reading
         timeout: Request timeout in seconds (default 30)
 
     Returns:
@@ -75,9 +73,8 @@ def categorize_notes(notes: str, dtc_code: str, voltage: Optional[float], timeou
     api_key = get_api_key()
 
     logger.info(
-        "Categorizing notes | dtc=%s voltage=%s notes_len=%d",
+        "Categorizing notes | dtc=%s notes_len=%d",
         dtc_code or "none",
-        voltage if voltage is not None else "N/A",
         len(notes),
     )
     logger.debug("Full technician notes: %s", notes)
@@ -85,7 +82,6 @@ def categorize_notes(notes: str, dtc_code: str, voltage: Optional[float], timeou
     prompt = CATEGORIZATION_PROMPT.format(
         notes=notes,
         dtc_code=dtc_code or "none",
-        voltage=voltage if voltage is not None else "not provided",
     )
 
     headers = {
@@ -266,7 +262,6 @@ UNDERSTAND_CLAIM_PROMPT = """You are an automotive warranty analyst. Analyze the
 
 Technician Notes: {notes}
 DTC Code: {dtc_code}
-Measured Voltage: {voltage}
 
 Classify into EXACTLY ONE category from this list:
   moisture_damage, physical_damage, ntf, electrical_issue,
@@ -294,14 +289,13 @@ Respond ONLY with this JSON structure, no preamble:
 """
 
 
-def understand_claim(notes: str, dtc_code: str, voltage: Optional[float], timeout: int = 30) -> dict | None:
+def understand_claim(notes: str, dtc_code: str, timeout: int = 30) -> dict | None:
     """
     Call OpenRouter LLM to perform semantic understanding of the claim.
 
     Args:
         notes: Technician's free-text notes
         dtc_code: Fault code (e.g., "P0562")
-        voltage: Measured voltage reading
         timeout: Request timeout in seconds (default 30)
 
     Returns:
@@ -311,16 +305,14 @@ def understand_claim(notes: str, dtc_code: str, voltage: Optional[float], timeou
     api_key = get_api_key()
 
     logger.info(
-        "[STAGE 1] LLM Understanding | dtc=%s voltage=%s notes_len=%d",
+        "[STAGE 1] LLM Understanding | dtc=%s notes_len=%d",
         dtc_code or "none",
-        voltage if voltage is not None else "N/A",
         len(notes),
     )
 
     prompt = UNDERSTAND_CLAIM_PROMPT.format(
         notes=notes,
         dtc_code=dtc_code or "none",
-        voltage=voltage if voltage is not None else "not provided",
     )
 
     headers = {
@@ -389,7 +381,6 @@ def understand_claim(notes: str, dtc_code: str, voltage: Optional[float], timeou
 def understand_claim_with_retry(
     notes: str,
     dtc_code: str,
-    voltage: Optional[float],
     max_retries: int = 2,
     timeout: int = 30,
 ) -> Optional[dict]:
@@ -399,7 +390,6 @@ def understand_claim_with_retry(
     Args:
         notes: Technician's free-text notes
         dtc_code: Fault code (e.g., "P0562")
-        voltage: Measured voltage reading
         max_retries: Maximum number of retry attempts (default 2)
         timeout: Request timeout in seconds (default 30)
 
@@ -411,7 +401,7 @@ def understand_claim_with_retry(
 
     for attempt in range(max_retries):
         try:
-            result = understand_claim(notes, dtc_code, voltage, timeout)
+            result = understand_claim(notes, dtc_code, timeout)
             if result is not None:
                 if attempt > 0:
                     logger.info("Succeeded on retry attempt %d/%d", attempt + 1, max_retries)
@@ -433,7 +423,6 @@ Given the warranty claim below, extract clean structured features.
 
 Technician Notes: {notes}
 DTC Code: {dtc_code}
-Measured Voltage: {voltage}
 Pre-classified Category: {llm_category}
 
 Rules:
@@ -442,7 +431,6 @@ Rules:
     "High fuel consumption", "OBD Light ON", "Vehicle not starting",
     "Low pickup", "Engine overheating", "Rough idling", "Brake warning light ON"
 - dtc_codes: split comma-separated codes into a list, uppercase, strip spaces
-- voltage: use the measured value as a float; if missing use 12.5
 - has_P/U/C/B: 1 if any code starts with that letter, else 0
 
 Respond ONLY with this JSON:
@@ -451,7 +439,6 @@ Respond ONLY with this JSON:
   "dtc_codes": ["..."],
   "dtc_text": "...",
   "dtc_count": 0,
-  "voltage": 0.0,
   "has_P": 0,
   "has_U": 0,
   "has_C": 0,
@@ -463,7 +450,6 @@ Respond ONLY with this JSON:
 def translate_to_ml_features(
     notes: str,
     dtc_code: str,
-    voltage: Optional[float],
     llm_category: str,
     timeout: int = 30,
 ) -> dict | None:
@@ -473,12 +459,11 @@ def translate_to_ml_features(
     Args:
         notes: Technician's free-text notes
         dtc_code: Fault code (e.g., "P0562")
-        voltage: Measured voltage reading
         llm_category: Category from Stage 1 understanding
         timeout: Request timeout in seconds (default 30)
 
     Returns:
-        dict with keys: customer_complaint, dtc_codes, dtc_text, dtc_count, voltage, has_P, has_U, has_C, has_B
+        dict with keys: customer_complaint, dtc_codes, dtc_text, dtc_count, has_P, has_U, has_C, has_B
         None if API call fails
     """
     api_key = get_api_key()
@@ -492,7 +477,6 @@ def translate_to_ml_features(
     prompt = TRANSLATE_ML_FEATURES_PROMPT.format(
         notes=notes,
         dtc_code=dtc_code or "none",
-        voltage=voltage if voltage is not None else "not provided",
         llm_category=llm_category,
     )
 
@@ -541,7 +525,6 @@ def translate_to_ml_features(
             "dtc_codes": parsed.get("dtc_codes", []),
             "dtc_text": parsed.get("dtc_text", ""),
             "dtc_count": parsed.get("dtc_count", 0),
-            "voltage": parsed.get("voltage", voltage if voltage is not None else 12.5),
             "has_P": parsed.get("has_P", 0),
             "has_U": parsed.get("has_U", 0),
             "has_C": parsed.get("has_C", 0),
