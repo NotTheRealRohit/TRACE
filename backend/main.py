@@ -13,7 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from PIL import Image
-import pytesseract
+# import pytesseract
 import io
 import re
 import easyocr
@@ -41,6 +41,13 @@ app.add_middleware(
 # ─────────────────────────────────────────────────────────
 # Schemas
 # ─────────────────────────────────────────────────────────
+def extract_dtc_codes(text):
+    return re.findall(r'\b[PUBC]\d{4}\b', text)
+
+
+def extract_voltage(text):
+    match = re.search(r'(\d{2}\.?\d?)\s?V', text)
+    return float(match.group(1)) if match else None
 
 @app.post("/scan-image-easyocr")
 async def scan_image_easyocr(file: UploadFile = File(...)):
@@ -58,33 +65,25 @@ async def scan_image_easyocr(file: UploadFile = File(...)):
         "raw_text": text
     }
 
-def extract_dtc_codes(text):
-    return re.findall(r'\b[PUBC]\d{4}\b', text)
 
+# @app.post("/scan-image")
+# async def scan_image(file: UploadFile = File(...)):
+#     contents = await file.read()
+#     image = Image.open(io.BytesIO(contents))
 
-def extract_voltage(text):
-    match = re.search(r'(\d{2}\.?\d?)\s?V', text)
-    return float(match.group(1)) if match else None
+#     # OCR
+#     raw_text = pytesseract.image_to_string(image)
 
+#     # Extract structured data
+#     fault_codes = extract_dtc_codes(raw_text)
+#     voltage = extract_voltage(raw_text)
 
-@app.post("/scan-image")
-async def scan_image(file: UploadFile = File(...)):
-    contents = await file.read()
-    image = Image.open(io.BytesIO(contents))
-
-    # OCR
-    raw_text = pytesseract.image_to_string(image)
-
-    # Extract structured data
-    fault_codes = extract_dtc_codes(raw_text)
-    voltage = extract_voltage(raw_text)
-
-    return {
-        "fault_codes": fault_codes,
-        "voltage": voltage,
-        "notes": raw_text[:500],
-        "raw_text": raw_text
-    }
+#     return {
+#         "fault_codes": fault_codes,
+#         "voltage": voltage,
+#         "notes": raw_text[:500],
+#         "raw_text": raw_text
+#     }
 class ClaimRequest(BaseModel):
     fault_code:         str
     technician_notes:   str
