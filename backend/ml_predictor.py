@@ -78,7 +78,7 @@ from   sklearn.model_selection import train_test_split, cross_val_predict
 from   sklearn.metrics import accuracy_score
 from   sklearn.feature_extraction.text import TfidfVectorizer   # kept for DTC text
 from   sklearn.preprocessing import OneHotEncoder, StandardScaler
-
+from typing import Optional
 import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from logging_config import get_logger, DecisionLogger
@@ -207,7 +207,7 @@ RULES = [
 ]
 
 
-def extract_dtc_features(dtc_str: str) -> dict:
+def extract_dtc_features(dtc_str: str) -> Optional[dict]:
     s = str(dtc_str).strip().upper() if dtc_str else ""
     if s in ("", "NA", "NAN", "NONE"):
         return {"dtc_count":0,"has_P":0,"has_U":0,"has_C":0,"has_B":0,"dtc_text":"none",
@@ -388,7 +388,8 @@ def load_models():
 _bundle = None
 
 
-def run_rules(fault_code: str, notes: str) -> dict | None:
+
+def run_rules(fault_code: str, notes: str) -> Optional[dict]:
     """
     Run the rule engine against the claim inputs.
 
@@ -417,7 +418,7 @@ def run_rules(fault_code: str, notes: str) -> dict | None:
     return {"rule_fired": False}
 
 
-def run_ml(features: dict) -> dict:
+def run_ml(features: dict) -> Optional[dict]:
     """
     Run ML scoring on the extracted features.
 
@@ -518,10 +519,10 @@ ML_WEIGHT_DISAGREE = 0.35
 
 
 def combine_scores(
-    rule_result: dict | None,
-    ml_result: dict,
-    llm_stage1: dict | None,
-) -> dict:
+    rule_result,
+    ml_result,
+    llm_stage1=None
+) -> Optional[dict]:
     """
     Combine rule engine and ML results into a final decision.
 
@@ -626,7 +627,7 @@ def combine_scores(
     }
 
 
-def assemble_output_from_fields(combined: dict, features: dict) -> dict:
+def assemble_output_from_fields(combined: dict, features: dict) -> Optional[dict]:
     """
     Assemble final output from combined results (fallback when LLM formatter fails).
     """
@@ -651,7 +652,7 @@ def assemble_output_from_fields(combined: dict, features: dict) -> dict:
     }
 
 
-def predict(fault_code: str, technician_notes: str) -> dict:
+def predict(fault_code: str, technician_notes: str) -> Optional[dict]:
     global _bundle
     if _bundle is None:
         _bundle = load_models()
