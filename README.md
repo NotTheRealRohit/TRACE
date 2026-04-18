@@ -12,6 +12,7 @@ TRACE uses FastAPI for the backend with scikit-learn ML models and OpenRouter LL
 - **Docker Compose**: [Install Docker Compose](https://docs.docker.com/compose/install/)
 - **Python 3.11+** (for local development without Docker)
 - **OpenRouter API Key** (see below)
+- **Install** sudo apt install tesseract-ocr   # (on EC2/Ubuntu) , brew install tesseract
 
 ## Getting Your OpenRouter API Key
 

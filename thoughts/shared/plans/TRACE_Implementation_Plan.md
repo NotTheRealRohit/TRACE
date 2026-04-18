@@ -121,7 +121,7 @@ Respond ONLY with this JSON structure, no preamble:
 ### Function signature
 ```python
 # ml_predictor.py
-def run_rules(fault_code: str, notes: str, voltage: float) -> dict | None
+# def run_rules(fault_code: str, notes: str, voltage: float) -> dict | None
 ```
 
 ### What changes

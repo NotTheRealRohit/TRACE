@@ -61,14 +61,14 @@
       text-shadow: 0 0 20px rgba(0,229,255,.4), 0 0 60px rgba(0,229,255,.15);
     }
 
-    .logo::before, .logo::after {
+    /* .logo::before, .logo::after {
       content: '//';
       font-size: 1.4rem;
       color: var(--border-hi);
       vertical-align: middle;
       margin: 0 .6rem;
       opacity: .6;
-    }
+    } */
 
     .subtitle {
       font-family: var(--font-mono);
@@ -664,7 +664,17 @@
 
 <script>
   const API_URL     = "http://localhost:8000/analyze";
-  const CLAUDE_API  = "https://api.anthropic.com/v1/messages";
+  // const formData = new FormData();
+  //     formData.append("file", document.getElementById("dtc-image-input").files[0]);
+
+  //     const resp = await fetch("http://localhost:8000/scan-image", {
+  //       method: "POST",
+  //       body: formData
+  //     });
+
+  //     const parsed = await resp.json();
+  //     lastExtracted = parsed;
+  //     renderExtracted(parsed);
 
   // ── State ──
   let currentImageBase64 = null;
@@ -715,60 +725,29 @@
 
   // ── Scan Image ──
   async function scanImage() {
-    if (!currentImageBase64) return;
+    const fileInput = document.getElementById("dtc-image-input");
+    const file = fileInput.files[0];
+
+    if (!file) {
+      alert("Please upload an image first");
+      return;
+    }
 
     setScanBusy(true);
     document.getElementById("preview-scan-line").classList.add("active");
 
-    const systemPrompt = `You are an automotive diagnostic assistant. Analyze the provided image which may contain DTC (Diagnostic Trouble Code) readouts, OBD-II scanner screens, ECU fault displays, or handwritten technician notes.
-
-Extract and return a JSON object with exactly these fields:
-{
-  "fault_codes": ["P0562", "U0100"],
-  "voltage": 13.8,
-  "notes": "Free-text summary of all other observations, symptoms, error descriptions, freeze frame data, or technician remarks found in the image",
-  "raw_text": "All text visible in the image verbatim"
-}
-
-Rules:
-- fault_codes: Array of strings. Only include valid DTC codes (starting with P, U, C, or B followed by 4 digits). Empty array if none found.
-- voltage: Number or null. Extract battery/system voltage if visible. null if not present.
-- notes: Summarize all other diagnostic info, symptoms, descriptions visible in the image.
-- raw_text: Transcribe ALL text you can see in the image.
-- Return ONLY the JSON object, no markdown, no explanation.`;
-
     try {
-      const resp = await fetch(CLAUDE_API, {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const resp = await fetch("http://localhost:8000/scan-image-easyocr", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
-          max_tokens: 1000,
-          system: systemPrompt,
-          messages: [{
-            role: "user",
-            content: [{
-              type: "image",
-              source: { type: "base64", media_type: currentImageType, data: currentImageBase64 }
-            }, {
-              type: "text",
-              text: "Extract all DTC codes, voltage readings, and diagnostic information from this image."
-            }]
-          }]
-        })
+        body: formData
       });
 
-      const data = await resp.json();
-      const rawText = data.content?.find(b => b.type === "text")?.text || "";
+      if (!resp.ok) throw new Error("Backend not responding");
 
-      let parsed;
-      try {
-        const cleaned = rawText.replace(/```json|```/g, "").trim();
-        parsed = JSON.parse(cleaned);
-      } catch {
-        // Fallback: show raw text
-        parsed = { fault_codes: [], voltage: null, notes: rawText, raw_text: rawText };
-      }
+      const parsed = await resp.json();
 
       lastExtracted = parsed;
       renderExtracted(parsed);
@@ -777,13 +756,13 @@ Rules:
       document.getElementById("extracted-placeholder").style.display = "none";
       const et = document.getElementById("extracted-text");
       et.style.display = "block";
-      et.textContent = "⚠ Scan failed: " + e.message + "\n\nEnsure CLAUDE_API key is configured.";
+      et.textContent = "❌ Scan failed: " + e.message;
+
     } finally {
       setScanBusy(false);
       document.getElementById("preview-scan-line").classList.remove("active");
     }
   }
-
   function renderExtracted(d) {
     document.getElementById("extracted-placeholder").style.display = "none";
     const et = document.getElementById("extracted-text");
@@ -866,7 +845,7 @@ Rules:
   }
 
   function setScanBusy(busy) {
-    const btn  = document.getElementById("scan-btn");
+    const btn  = document.getElementById("scan-btn").disabled = false;
     const icon = document.getElementById("scan-btn-icon");
     const text = document.getElementById("scan-btn-text");
     btn.disabled = busy;
