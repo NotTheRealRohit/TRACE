@@ -5,7 +5,7 @@ FROM nginx:1.27-alpine
 RUN rm -rf /usr/share/nginx/html/*
 
 # Copy our static frontend file as the site root
-COPY index.html /usr/share/nginx/html/index.html
+COPY trace.html /usr/share/nginx/html/index.html
 
 # Copy custom nginx config (handles SPA routing + correct MIME types)
 COPY nginx.conf /etc/nginx/conf.d/default.conf
