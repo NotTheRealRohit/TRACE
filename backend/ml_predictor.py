@@ -3,7 +3,7 @@
 TRACE ML Predictor  —  Hybrid LLM + Rule + ML Engine
 ------------------------------------------------------
 Dataset
-  synthetic_warranty_claims_v9.csv (100 000 rows, 2019-2025).
+  synthetic_warranty_claims_v11.csv (real-world warranty claims).
   Synthetically generated with real-world-like noise levels - pattern 
   correlations are approximately 93-96% rather than 100%, making this 
   a more realistic training dataset that better reflects production data.
@@ -90,7 +90,7 @@ warnings.filterwarnings("ignore")
 
 BASE_DIR   = os.path.dirname(os.path.abspath(__file__))
 MODEL_PATH = os.path.join(BASE_DIR, "trace_models.pkl")
-DATA_PATH  = os.path.join(BASE_DIR, "synthetic_warranty_claims_v9.csv")
+DATA_PATH  = os.path.join(BASE_DIR, "synthetic_warranty_claims_v11.csv")
 
 KNOWN_COMPLAINTS = [
     "Engine jerking during acceleration", "Starting Problem",
@@ -259,10 +259,20 @@ def match_complaint(user_text: str) -> str:
 def train_and_save():
     logger.info("[INIT] Loading dataset from %s", DATA_PATH)
     df = pd.read_csv(DATA_PATH)
+    df["Mileage"] = df["Mileage"].astype(str).str.replace("KM", "", regex=False).str.strip()
+    df["Mileage"] = pd.to_numeric(df["Mileage"], errors="coerce").fillna(0)
+    def convert_date(x):
+        x_str = str(x).strip()
+        if x_str.isdigit() and len(x_str) >= 4 and len(x_str) <= 5:
+            return pd.to_datetime(int(x_str), origin="1899-12-30", unit="D")
+        return pd.to_datetime(x_str, errors="coerce")
+    df["Date"] = df["Date"].apply(convert_date)
     df["DTC"]                = df["DTC"].fillna("").replace("none", "")
     df["Customer Complaint"] = df["Customer Complaint"].fillna("OBD Light ON")
     df["Failure Analysis"]   = df["Failure Analysis"].fillna("NTF")
     df["Warranty Decision"]  = df["Warranty Decision"].fillna("According to Specification")
+    df["Supplier"]          = df["Supplier"].fillna("Unknown")
+    df["Year"]              = df["Year"].fillna(2020)
 
     # LabelEncoders are fit on the full dataset so every target class is known.
     # This is safe: target encoding does not expose test-set feature statistics.
@@ -286,10 +296,10 @@ def train_and_save():
     _mileage_bins   = [0, 20_000, 60_000, 100_000, np.inf]
     _mileage_labels = ["low", "mid", "high", "very_high"]
     df_tr["mileage_bracket"] = pd.cut(
-        df_tr["Mileage_km"], bins=_mileage_bins, labels=_mileage_labels
+        df_tr["Mileage"], bins=_mileage_bins, labels=_mileage_labels
     ).astype(str)
     df_te["mileage_bracket"] = pd.cut(
-        df_te["Mileage_km"], bins=_mileage_bins, labels=_mileage_labels
+        df_te["Mileage"], bins=_mileage_bins, labels=_mileage_labels
     ).astype(str)
 
     # 2. claim_age — years between vehicle manufacture year and claim date.
@@ -317,7 +327,7 @@ def train_and_save():
     X_d_tr = tfidf_d.fit_transform(dtc_tr["dtc_text"])
     X_n_tr = dtc_tr[dtc_flag_cols].values
     X_s_tr = ohe_supplier.fit_transform(df_tr[["Supplier"]])
-    X_m_tr = mileage_scaler.fit_transform(df_tr[["Mileage_km"]])
+    X_m_tr = mileage_scaler.fit_transform(df_tr[["Mileage"]])
     X_y_tr = year_scaler.fit_transform(df_tr[["Year"]])
     X_mb_tr = ohe_mileage.fit_transform(df_tr[["mileage_bracket"]])
     X_ca_tr = claim_age_scaler.fit_transform(df_tr[["claim_age"]])
@@ -332,7 +342,7 @@ def train_and_save():
     X_d_te = tfidf_d.transform(dtc_te["dtc_text"])
     X_n_te = dtc_te[dtc_flag_cols].values
     X_s_te = ohe_supplier.transform(df_te[["Supplier"]])
-    X_m_te = mileage_scaler.transform(df_te[["Mileage_km"]])
+    X_m_te = mileage_scaler.transform(df_te[["Mileage"]])
     X_y_te = year_scaler.transform(df_te[["Year"]])
     X_mb_te = ohe_mileage.transform(df_te[["mileage_bracket"]])
     X_ca_te = claim_age_scaler.transform(df_te[["claim_age"]])
@@ -457,7 +467,7 @@ def run_ml(features: dict) -> dict:
         pd.DataFrame([[features.get("supplier", "Unknown")]], columns=["Supplier"])
     )
     X_m = _csr(_bundle["mileage_scaler"].transform(
-        pd.DataFrame([[features.get("mileage_km", 50000.0)]], columns=["Mileage_km"])
+        pd.DataFrame([[features.get("mileage_km", 50000.0)]], columns=["Mileage"])
     ))
     X_y = _csr(_bundle["year_scaler"].transform(
         pd.DataFrame([[features.get("year", 2024)]], columns=["Year"])
