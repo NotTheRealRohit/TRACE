@@ -652,7 +652,7 @@ def assemble_output_from_fields(combined: dict, features: dict) -> Optional[dict
     }
 
 
-def predict(fault_code: str, technician_notes: str) -> Optional[dict]:
+def predict(fault_code: str, technician_notes: str, voltage) -> Optional[dict]:
     global _bundle
     if _bundle is None:
         _bundle = load_models()

@@ -116,6 +116,7 @@ def analyze_claim(claim: ClaimRequest):
     """
     logger.info("REQUEST /analyze | fault_code=%s voltage=%s",
                 claim.fault_code, claim.voltage)
+    print(f"Received claim: {claim} | {claim.technician_notes[:100]}... | {claim.voltage}V")
     
     try:
         result = ml_predict(
