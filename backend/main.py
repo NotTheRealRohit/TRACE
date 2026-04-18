@@ -8,6 +8,7 @@ Run:
 
 import os
 import sys
+import numpy as np
 from dotenv import load_dotenv
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -53,7 +54,8 @@ def extract_voltage(text):
 async def scan_image_easyocr(file: UploadFile = File(...)):
     contents = await file.read()
     image = Image.open(io.BytesIO(contents))
-    result = reader.readtext(image)
+    image_np = np.array(image)
+    result = reader.readtext(image_np)
     text = " ".join([r[1] for r in result])
         # Extract structured data
     fault_codes = extract_dtc_codes(text)
