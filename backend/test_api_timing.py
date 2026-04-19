@@ -38,7 +38,6 @@ t0 = time.monotonic()
 result1 = understand_claim(
     test_inputs["notes"],
     test_inputs["fault_code"],
-    test_inputs["voltage"],
     timeout=60
 )
 t1 = time.monotonic()
@@ -62,7 +61,6 @@ t0 = time.monotonic()
 result3 = translate_to_ml_features(
     test_inputs["notes"],
     test_inputs["fault_code"],
-    test_inputs["voltage"],
     category,
     timeout=60
 )

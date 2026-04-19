@@ -74,15 +74,15 @@ class TestLLMClient:
         """Raises exception on API failure"""
         if 'llm_client' in sys.modules:
             del sys.modules['llm_client']
-        
+
         mock_response = MagicMock()
         mock_response.status_code = 500
         mock_response.text = "Internal Server Error"
-        
+
         with patch('llm_client.requests.post', return_value=mock_response):
             with patch.dict('os.environ', {'OPENROUTER_API_KEY': 'test-key'}):
                 from llm_client import categorize_notes
-                with pytest.raises(RuntimeError, match="OpenRouter API error: 500"):
+                with pytest.raises(RuntimeError, match="LLM API call failed"):
                     categorize_notes("Test notes", "P0562", 12.5)
 
     def test_parses_json_response(self):
@@ -130,5 +130,5 @@ class TestLLMClient:
             if 'llm_client' in sys.modules:
                 del sys.modules['llm_client']
             from llm_client import get_api_key
-            with pytest.raises(ValueError, match="OPENROUTER_API_KEY not set"):
+            with pytest.raises(ValueError, match="No LLM provider configured"):
                 get_api_key()

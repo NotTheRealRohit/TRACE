@@ -73,6 +73,7 @@ import pandas as pd
 from   difflib import get_close_matches
 from   scipy.sparse import hstack
 from   sklearn.ensemble import RandomForestClassifier
+from   xgboost import XGBClassifier
 from   sklearn.preprocessing import LabelEncoder
 from   sklearn.model_selection import train_test_split, cross_val_predict
 from   sklearn.metrics import accuracy_score
@@ -136,8 +137,26 @@ HIGH_VALUE_DTCS = [
 
 RULES = [
     {
+        "id": "over_voltage",
+        "match": lambda fc, notes, voltage: voltage is not None and voltage > 16.0,
+        "failure_analysis":  "EOS (Electrical OverStress) due to over-voltage",
+        "warranty_decision": "Customer Failure",
+        "status":            "Rejected",
+        "confidence":        93.0,
+        "reason":            "Voltage > 16.0V detected — vehicle charging system failure, not covered under warranty.",
+    },
+    {
+        "id": "low_voltage",
+        "match": lambda fc, notes, voltage: voltage is not None and voltage < 11.0,
+        "failure_analysis":  "Sensor short due to low voltage",
+        "warranty_decision": "Customer Failure",
+        "status":            "Rejected",
+        "confidence":        95.0,
+        "reason":            "Voltage < 11.0V detected — battery failure or severe undercharging, customer responsibility.",
+    },
+    {
         "id": "moisture",
-        "match": lambda fc, notes: any(k in notes.lower() for k in
+        "match": lambda fc, notes, voltage: any(k in notes.lower() for k in
                     ("water", "moisture", "wet", "flood", "rain", "humid", "corrosion", "corroded")),
         "failure_analysis":  "Sensor short due to moisture",
         "warranty_decision": "Customer Failure",
@@ -147,7 +166,7 @@ RULES = [
     },
     {
         "id": "physical_damage",
-        "match": lambda fc, notes: any(k in notes.lower() for k in
+        "match": lambda fc, notes, voltage: any(k in notes.lower() for k in
                     ("crack", "broken", "impact", "collision", "bent", "misuse", "dropped", "physical damage")),
         "failure_analysis":  "Connector damage",
         "warranty_decision": "Customer Failure",
@@ -157,7 +176,7 @@ RULES = [
     },
     {
         "id": "ntf",
-        "match": lambda fc, notes: any(k in notes.lower() for k in
+        "match": lambda fc, notes, voltage: any(k in notes.lower() for k in
                     ("no fault", "ntf", "no trouble", "no issue", "no defect", "intermittent", "cannot reproduce")),
         "failure_analysis":  "NTF",
         "warranty_decision": "According to Specification",
@@ -167,7 +186,7 @@ RULES = [
     },
     {
         "id": "u_code",
-        "match": lambda fc, notes: bool(re.search(r'\bU[0-9A-Fa-f]{4}\b', fc)),
+        "match": lambda fc, notes, voltage: bool(re.search(r'\bU[0-9A-Fa-f]{4}\b', fc)),
         "failure_analysis":  "controller failure due to supplier production failure",
         "warranty_decision": "Production Failure",
         "status":            "Approved",
@@ -176,7 +195,7 @@ RULES = [
     },
     {
         "id": "p_code_engine",
-        "match": lambda fc, notes: (
+        "match": lambda fc, notes, voltage: (
             bool(re.search(r'\bP0[0-9]{3}\b', fc.upper())) and
             any(k in notes.lower() for k in ("jerk", "pickup", "acceleration", "overheat", "fuel", "idle", "rough"))
         ),
@@ -188,7 +207,7 @@ RULES = [
     },
     {
         "id": "c_code",
-        "match": lambda fc, notes: bool(re.search(r'\bC[0-9A-Fa-f]{4}\b', fc)),
+        "match": lambda fc, notes, voltage: bool(re.search(r'\bC[0-9A-Fa-f]{4}\b', fc)),
         "failure_analysis":  "Connector damage",
         "warranty_decision": "Production Failure",
         "status":            "Approved",
@@ -197,7 +216,7 @@ RULES = [
     },
     {
         "id": "b_code",
-        "match": lambda fc, notes: bool(re.search(r'\bB[0-9A-Fa-f]{4}\b', fc)),
+        "match": lambda fc, notes, voltage: bool(re.search(r'\bB[0-9A-Fa-f]{4}\b', fc)),
         "failure_analysis":  "Connector damage",
         "warranty_decision": "Production Failure",
         "status":            "Approved",
@@ -299,6 +318,38 @@ def train_and_save():
     df_tr["claim_age"] = pd.to_datetime(df_tr["Date"]).dt.year - df_tr["Year"]
     df_te["claim_age"] = pd.to_datetime(df_te["Date"]).dt.year - df_te["Year"]
 
+    # 3. voltage_bracket — OHE captures non-linear voltage thresholds that
+    #    separate ASIC CJ327 CF vs PF (threshold ~15.4V), and track-burnt EOS (threshold >17V)
+    def voltage_bracket(v):
+        if v <= 11.0: return "very_low"
+        elif v <= 13.5: return "low"
+        elif v <= 14.5: return "normal"
+        elif v <= 15.4: return "moderate_high"
+        elif v <= 16.0: return "high"
+        elif v <= 17.0: return "very_high"
+        else: return "extreme"
+    df_tr["voltage_bracket"] = df_tr["Voltage"].apply(voltage_bracket)
+    df_te["voltage_bracket"] = df_te["Voltage"].apply(voltage_bracket)
+
+    # 4. dtc_count_bracket — DTC count is highly predictive (CF avg 2.3, PF avg 1.5)
+    def dtc_count_bracket(c):
+        if c == 0: return "none"
+        elif c == 1: return "single"
+        elif c <= 3: return "few"
+        else: return "many"
+    df_tr["dtc_count_bracket"] = dtc_tr["dtc_count"].apply(dtc_count_bracket)
+    df_te["dtc_count_bracket"] = dtc_te["dtc_count"].apply(dtc_count_bracket)
+
+    # 5. Interaction features — voltage × DTC prefix combinations
+    df_tr["volt_high_and_P"] = ((df_tr["Voltage"] > 15.4) & (dtc_tr["has_P"] == 1)).astype(int)
+    df_te["volt_high_and_P"] = ((df_te["Voltage"] > 15.4) & (dtc_te["has_P"] == 1)).astype(int)
+    df_tr["volt_low_and_U"] = ((df_tr["Voltage"] < 11.0) & (dtc_tr["has_U"] == 1)).astype(int)
+    df_te["volt_low_and_U"] = ((df_te["Voltage"] < 11.0) & (dtc_te["has_U"] == 1)).astype(int)
+    df_tr["volt_normal_and_C"] = ((df_tr["Voltage"] >= 11.0) & (df_tr["Voltage"] <= 14.5) & (dtc_tr["has_C"] == 1)).astype(int)
+    df_te["volt_normal_and_C"] = ((df_te["Voltage"] >= 11.0) & (df_te["Voltage"] <= 14.5) & (dtc_te["has_C"] == 1)).astype(int)
+    df_tr["has_multiple_prefixes"] = ((dtc_tr["has_P"] + dtc_tr["has_U"] + dtc_tr["has_C"] + dtc_tr["has_B"]) > 1).astype(int)
+    df_te["has_multiple_prefixes"] = ((dtc_te["has_P"] + dtc_te["has_U"] + dtc_te["has_C"] + dtc_te["has_B"]) > 1).astype(int)
+
     dtc_flag_cols = (
         ["dtc_count","has_P","has_U","has_C","has_B"] +
         [f"dtc_{d.lower()}" for d in HIGH_VALUE_DTCS]
@@ -312,6 +363,9 @@ def train_and_save():
     year_scaler    = StandardScaler()
     ohe_mileage      = OneHotEncoder(sparse_output=True, handle_unknown="ignore")
     claim_age_scaler = StandardScaler()
+    voltage_scaler   = StandardScaler()
+    ohe_voltage_bracket = OneHotEncoder(sparse_output=True, handle_unknown="ignore")
+    ohe_dtc_count_bracket = OneHotEncoder(sparse_output=True, handle_unknown="ignore")
 
     X_c_tr = ohe.fit_transform(df_tr[["Customer Complaint"]])
     X_d_tr = tfidf_d.fit_transform(dtc_tr["dtc_text"])
@@ -321,11 +375,16 @@ def train_and_save():
     X_y_tr = year_scaler.fit_transform(df_tr[["Year"]])
     X_mb_tr = ohe_mileage.fit_transform(df_tr[["mileage_bracket"]])
     X_ca_tr = claim_age_scaler.fit_transform(df_tr[["claim_age"]])
+    X_v_tr  = voltage_scaler.fit_transform(df_tr[["Voltage"]])
+    X_vb_tr = ohe_voltage_bracket.fit_transform(df_tr[["voltage_bracket"]])
+    X_dcb_tr = ohe_dtc_count_bracket.fit_transform(df_tr[["dtc_count_bracket"]])
+    X_int_tr = df_tr[["volt_high_and_P", "volt_low_and_U", "volt_normal_and_C", "has_multiple_prefixes"]].values
 
     from scipy.sparse import csr_matrix
     X_tr = hstack([X_c_tr, X_d_tr, csr_matrix(X_n_tr),
                    X_s_tr, csr_matrix(X_m_tr), csr_matrix(X_y_tr),
-                   X_mb_tr, csr_matrix(X_ca_tr)])
+                   X_mb_tr, csr_matrix(X_ca_tr), csr_matrix(X_v_tr),
+                   X_vb_tr, X_dcb_tr, csr_matrix(X_int_tr)])
 
     # ── Step 3: transform() on the TEST slice only ────────────────────────────
     X_c_te = ohe.transform(df_te[["Customer Complaint"]])
@@ -336,21 +395,32 @@ def train_and_save():
     X_y_te = year_scaler.transform(df_te[["Year"]])
     X_mb_te = ohe_mileage.transform(df_te[["mileage_bracket"]])
     X_ca_te = claim_age_scaler.transform(df_te[["claim_age"]])
+    X_v_te  = voltage_scaler.transform(df_te[["Voltage"]])
+    X_vb_te = ohe_voltage_bracket.transform(df_te[["voltage_bracket"]])
+    X_dcb_te = ohe_dtc_count_bracket.transform(df_te[["dtc_count_bracket"]])
+    X_int_te = df_te[["volt_high_and_P", "volt_low_and_U", "volt_normal_and_C", "has_multiple_prefixes"]].values
 
     X_te = hstack([X_c_te, X_d_te, csr_matrix(X_n_te),
                    X_s_te, csr_matrix(X_m_te), csr_matrix(X_y_te),
-                   X_mb_te, csr_matrix(X_ca_te)])
+                   X_mb_te, csr_matrix(X_ca_te), csr_matrix(X_v_te),
+                   X_vb_te, X_dcb_te, csr_matrix(X_int_te)])
+
+    # Tuned XGBoost hyperparameters from optimization
+    _xgb_params = dict(
+        n_estimators=1000, max_depth=10, learning_rate=0.02,
+        min_child_weight=3, subsample=0.8, colsample_bytree=0.8,
+        reg_lambda=0.1, eval_metric='mlogloss', verbosity=0, random_state=42
+    )
 
     logger.info("[INIT] Training Failure Analysis classifier...")
     logger.info("[INIT] Generating OOF FA probabilities for WD cascade (cv=5)...")
     fa_probs_tr = cross_val_predict(
-        RandomForestClassifier(n_estimators=200, random_state=42, n_jobs=-1),
+        XGBClassifier(n_jobs=-1, **_xgb_params),
         X_tr, yfa_tr,
         cv=5,
         method="predict_proba",
     )
-    # Train the final clf_fa on ALL of X_tr (OOF probs used only for clf_wd training)
-    clf_fa = RandomForestClassifier(n_estimators=200, random_state=42, n_jobs=-1)
+    clf_fa = XGBClassifier(n_jobs=-1, **_xgb_params)
     clf_fa.fit(X_tr, yfa_tr)
 
     fa_probs_te = clf_fa.predict_proba(X_te)
@@ -358,7 +428,7 @@ def train_and_save():
     X_wd_te = hstack([X_te, csr_matrix(fa_probs_te)])
 
     logger.info("[INIT] Training Warranty Decision classifier with FA cascade...")
-    clf_wd = RandomForestClassifier(n_estimators=200, class_weight="balanced", random_state=42, n_jobs=-1)
+    clf_wd = XGBClassifier(n_jobs=-1, **_xgb_params)
     clf_wd.fit(X_wd_tr, ywd_tr)
 
     fa_acc = accuracy_score(yfa_te, clf_fa.predict(X_te))
@@ -371,7 +441,10 @@ def train_and_save():
                   ohe_supplier=ohe_supplier, mileage_scaler=mileage_scaler,
                   year_scaler=year_scaler,
                   ohe_mileage=ohe_mileage,
-                  claim_age_scaler=claim_age_scaler)
+                  claim_age_scaler=claim_age_scaler,
+                  voltage_scaler=voltage_scaler,
+                  ohe_voltage_bracket=ohe_voltage_bracket,
+                  ohe_dtc_count_bracket=ohe_dtc_count_bracket)
     with open(MODEL_PATH, "wb") as f:
         pickle.dump(bundle, f)
     logger.info("[INIT] Models saved to %s", MODEL_PATH)
@@ -389,13 +462,14 @@ _bundle = None
 
 
 
-def run_rules(fault_code: str, notes: str) -> Optional[dict]:
+def run_rules(fault_code: str, notes: str, voltage: float = None) -> Optional[dict]:
     """
     Run the rule engine against the claim inputs.
 
     Args:
         fault_code: DTC code(s)
         notes: Technician's free-text notes
+        voltage: Measured voltage (optional)
 
     Returns:
         dict with keys: rule_id, status, warranty_decision, rule_confidence, failure_analysis, reason, rule_fired
@@ -403,7 +477,7 @@ def run_rules(fault_code: str, notes: str) -> Optional[dict]:
     """
     for rule in RULES:
         try:
-            if rule["match"](fault_code, notes):
+            if rule["match"](fault_code, notes, voltage):
                 return {
                     "rule_id": rule["id"],
                     "status": rule["status"],
@@ -480,7 +554,47 @@ def run_ml(features: dict) -> Optional[dict]:
         pd.DataFrame([[_ca_val]], columns=["claim_age"])
     ))
 
-    X = hstack([X_c, X_d, _csr(X_n), X_s, X_m, X_y, X_mb, X_ca])
+    _v_val = float(features.get("voltage", 14.2))
+    X_v = _csr(_bundle["voltage_scaler"].transform(
+        pd.DataFrame([[_v_val]], columns=["Voltage"])
+    ))
+
+    # New features: voltage_bracket, dtc_count_bracket, and interactions
+    def voltage_bracket(v):
+        if v <= 11.0: return "very_low"
+        elif v <= 13.5: return "low"
+        elif v <= 14.5: return "normal"
+        elif v <= 15.4: return "moderate_high"
+        elif v <= 16.0: return "high"
+        elif v <= 17.0: return "very_high"
+        else: return "extreme"
+    _vb_val = voltage_bracket(_v_val)
+    X_vb = _bundle["ohe_voltage_bracket"].transform(
+        pd.DataFrame([[_vb_val]], columns=["voltage_bracket"])
+    )
+
+    _dc_val = int(features.get("dtc_count", 0))
+    def dtc_count_bracket(c):
+        if c == 0: return "none"
+        elif c == 1: return "single"
+        elif c <= 3: return "few"
+        else: return "many"
+    _dcb_val = dtc_count_bracket(_dc_val)
+    X_dcb = _bundle["ohe_dtc_count_bracket"].transform(
+        pd.DataFrame([[_dcb_val]], columns=["dtc_count_bracket"])
+    )
+
+    _has_P = int(features.get("has_P", 0))
+    _has_U = int(features.get("has_U", 0))
+    _has_C = int(features.get("has_C", 0))
+    _volt_high_and_P = int((_v_val > 15.4) and _has_P)
+    _volt_low_and_U = int((_v_val < 11.0) and _has_U)
+    _volt_normal_and_C = int((11.0 <= _v_val <= 14.5) and _has_C)
+    _has_multi = int((_has_P + _has_U + _has_C + int(features.get("has_B", 0))) > 1)
+    X_int = _csr([[_volt_high_and_P, _volt_low_and_U, _volt_normal_and_C, _has_multi]])
+
+    X = hstack([X_c, X_d, _csr(X_n), X_s, X_m, X_y, X_mb, X_ca, X_v,
+                X_vb, X_dcb, X_int])
 
     # FIX 5 + FIX 1: single proba call for FA, cascade into WD
     fa_proba_row = _bundle["clf_fa"].predict_proba(X)[0]
@@ -516,6 +630,35 @@ RULE_WEIGHT_AGREE = 0.7
 ML_WEIGHT_AGREE = 0.3
 RULE_WEIGHT_DISAGREE = 0.55
 ML_WEIGHT_DISAGREE = 0.35
+
+LLM_CATEGORY_TO_WARRANTY = {
+    "moisture_damage": "Customer Failure",
+    "physical_damage": "Customer Failure",
+    "ntf": "According to Specification",
+    "electrical_issue": "Production Failure",
+    "engine_symptom": "Production Failure",
+    "communication_fault": "Production Failure",
+    "other": None,
+}
+
+LLM_WEIGHT = 0.15
+RULE_WEIGHT_AGREE_LLM = 0.595
+ML_WEIGHT_AGREE_LLM = 0.255
+RULE_WEIGHT_DISAGREE_LLM = 0.4675
+ML_WEIGHT_DISAGREE_LLM = 0.2975
+
+LLM_LOW_CONFIDENCE_THRESHOLD = 0.3
+LLM_LOW_CONFIDENCE_PENALTY = 0.7
+LLM_CONFIDENCE_FOR_TAG = 0.5
+
+
+def _llm_agrees_with_decision(llm_stage1: Optional[dict], warranty_decision: str) -> Optional[bool]:
+    if llm_stage1 is None:
+        return None
+    llm_wd = LLM_CATEGORY_TO_WARRANTY.get(llm_stage1.get("category"))
+    if llm_wd is None:
+        return None
+    return llm_wd == warranty_decision
 
 
 def combine_scores(
@@ -554,22 +697,50 @@ def combine_scores(
 
     ml_conf = ml_result.get("ml_confidence", 50.0)
 
-    if rule_fired and agreement:
-        combined_confidence = (
-            RULE_WEIGHT_AGREE * rule_conf
-            + ML_WEIGHT_AGREE * ml_conf
-            + AGREEMENT_BONUS
-        )
-    elif rule_fired and not agreement:
-        combined_confidence = (
-            RULE_WEIGHT_DISAGREE * rule_conf
-            + ML_WEIGHT_DISAGREE * ml_conf
-        )
-    else:
-        combined_confidence = ml_conf
+    llm_conf = llm_stage1.get("confidence", 0.5) if llm_stage1 else 0.5
+    llm_agrees_rule = _llm_agrees_with_decision(llm_stage1, rule_result.get("warranty_decision", "")) if rule_fired else None
+    llm_agrees_ml = _llm_agrees_with_decision(llm_stage1, ml_result.get("ml_warranty_decision", ""))
 
-    if llm_stage1 is not None and llm_stage1.get("category") == "other" and not rule_fired:
-        combined_confidence *= WEAK_INPUT_PENALTY
+    if rule_fired and agreement:
+        llm_scaled = llm_conf * 100
+        if llm_agrees_rule is True and llm_agrees_ml is True:
+            combined_confidence = (
+                RULE_WEIGHT_AGREE_LLM * rule_conf
+                + ML_WEIGHT_AGREE_LLM * ml_conf
+                + LLM_WEIGHT * llm_scaled
+                + AGREEMENT_BONUS
+            )
+        else:
+            combined_confidence = (
+                RULE_WEIGHT_AGREE * rule_conf
+                + ML_WEIGHT_AGREE * ml_conf
+                + 2.0
+            )
+    elif rule_fired and not agreement:
+        llm_scaled = llm_conf * 100
+        if llm_agrees_rule is True:
+            combined_confidence = (
+                RULE_WEIGHT_DISAGREE_LLM * rule_conf
+                + ML_WEIGHT_DISAGREE_LLM * ml_conf
+                + LLM_WEIGHT * llm_scaled
+            )
+        elif llm_agrees_ml is True:
+            combined_confidence = (
+                RULE_WEIGHT_DISAGREE_LLM * rule_conf
+                + ML_WEIGHT_DISAGREE_LLM * ml_conf
+                + LLM_WEIGHT * llm_scaled
+            )
+        else:
+            combined_confidence = (
+                RULE_WEIGHT_DISAGREE * rule_conf
+                + ML_WEIGHT_DISAGREE * ml_conf
+            )
+    else:
+        llm_scaled = llm_conf * 100
+        combined_confidence = (1 - LLM_WEIGHT) * ml_conf + LLM_WEIGHT * llm_scaled
+
+    if not rule_fired and llm_conf < LLM_LOW_CONFIDENCE_THRESHOLD:
+        combined_confidence *= LLM_LOW_CONFIDENCE_PENALTY
 
     combined_confidence = round(min(98.0, max(0.0, combined_confidence)), 1)
 
@@ -606,12 +777,22 @@ def combine_scores(
     else:
         warranty_decision = ml_result.get("ml_warranty_decision", "")
 
-    if llm_stage1 is not None and rule_fired:
+    llm_has_signal = llm_stage1 is not None and llm_stage1.get("confidence", 0) >= LLM_CONFIDENCE_FOR_TAG
+
+    if rule_fired and llm_has_signal:
         decision_engine = "LLM+Rule+ML"
     elif rule_fired:
         decision_engine = "Rule+ML"
     else:
-        decision_engine = "ML"
+        decision_engine = "LLM+ML" if llm_has_signal else "ML"
+
+    logger.info(
+        "LLM agreement | category=%s llm_conf=%.2f agrees_rule=%s agrees_ml=%s",
+        llm_stage1.get("category") if llm_stage1 else "N/A",
+        llm_conf,
+        llm_agrees_rule,
+        llm_agrees_ml,
+    )
 
     return {
         "status": status,
@@ -677,7 +858,7 @@ def predict(fault_code: str, technician_notes: str, voltage) -> Optional[dict]:
         except Exception as e:
             logger.warning("[STAGE 1] LLM failed, using fallback: %s", e)
 
-    rule_result = run_rules(fc, notes)
+    rule_result = run_rules(fc, notes, voltage)
     if rule_result.get("rule_fired"):
         decision_logger.log_decision("Rule Engine", rule_result)
         logger.info("Rule fired: %s with confidence %.1f",
@@ -689,6 +870,9 @@ def predict(fault_code: str, technician_notes: str, voltage) -> Optional[dict]:
             from llm_client import translate_to_ml_features
             category = llm_stage1["category"] if llm_stage1 else "other"
             features = translate_to_ml_features(notes, fc, category)
+            if features:
+                dtc_f = extract_dtc_features(fc)
+                features.update({k: v for k, v in dtc_f.items() if k.startswith("dtc_")})
         except Exception as e:
             logger.warning("[STAGE 3] LLM failed, using fallback: %s", e)
 
@@ -702,11 +886,17 @@ def predict(fault_code: str, technician_notes: str, voltage) -> Optional[dict]:
             "has_U": dtc_f["has_U"],
             "has_C": dtc_f["has_C"],
             "has_B": dtc_f["has_B"],
+            **dtc_f,
             "supplier": "Unknown",
             "mileage_km": 50000.0,
             "year": 2024,
-            "claim_age": 1,          # default: assume 1-year-old claim
+            "claim_age": 1,
+            "voltage": voltage if voltage is not None else 14.2,
         }
+
+    # Ensure voltage is in features even if LLM path was taken
+    if features is not None and "voltage" not in features:
+        features["voltage"] = voltage if voltage is not None else 14.2
 
     ml_result = run_ml(features)
     decision_logger.log_decision("ML Model", {
@@ -747,5 +937,5 @@ if __name__ == "__main__":
         ("C0045, P0987", "Brake warning light ON, vehicle shaking"),
     ]
     for fc, notes in tests:
-        r = predict(fc, notes)
+        r = predict(fc, notes, 14.2)
         print(f"  [{r['status']:25s}] FA: {r['failure_analysis'][:38]:38s} | {r['confidence']}%  [{r['decision_engine']}]")

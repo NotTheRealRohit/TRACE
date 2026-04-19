@@ -4,3 +4,14 @@ venv
 backend/__pycache__/
 backend/tests
 backend/trace_models.pkl
+
+# Temporary / generated files
+test-images/
+sample.txt
+thoughts/shared/evaluate_model_output.txt
+thoughts/shared/research/
+
+# OpenCode generated files
+.opencode/agents/new*.txt
+.opencode/package-lock.json
+.opencode/skills/

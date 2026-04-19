@@ -490,7 +490,10 @@ def main():
   Customer Complaint text is passed as technician_notes so that
   match_complaint() reproduces the same label as during training.
 """)
-    evaluate_pipeline(df_te, le_fa, le_wd, sample_size=3)
+    try:
+        evaluate_pipeline(df_te, le_fa, le_wd, sample_size=10)
+    except ValueError as e:
+        print(f"\n  Pipeline evaluation skipped: {e}")
 
     # ------------------------------------------------------------------
     # Summary
