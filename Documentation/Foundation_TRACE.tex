@@ -285,34 +285,39 @@ Key findings from the tuning process:
 
 \subsection{Cascade Classification Architecture}
 
-TRACE employs a cascade architecture in which the output of the first classifier --- the Failure Analysis (FA) classifier --- is used as additional input features to the second classifier --- the Warranty Decision (WD) classifier. The motivation is that the warranty decision is causally dependent on the failure analysis: whether a part failure was caused by a production defect or by customer misuse directly determines whether the warranty claim is approved or rejected.
+TRACE employs a cascade architecture in which the output of the first classifier --- the Failure Analysis (FA) classifier --- is used as additional input features to the second classifier --- the Warranty Decision (WD) classifier. Both classifiers are implemented as XGBoost (\texttt{XGBClassifier}) gradient-boosted ensembles. The motivation is that the warranty decision is causally dependent on the failure analysis: whether a part failure was caused by a production defect or by customer misuse directly determines whether the warranty claim is approved or rejected.
 
 The cascade is implemented as follows:
 
 \begin{enumerate}
-    \item The FA classifier produces a probability vector over all 6 failure analysis classes for each training example.
+    \item The FA classifier (\texttt{clf\_fa}) produces a 6-dimensional probability vector over all 6 failure analysis classes for each example, via \texttt{predict\_proba()}.
     \item This probability vector is horizontally concatenated onto the original feature matrix to form the augmented feature matrix \(X_{wd}\).
-    \item The WD classifier is trained on \(X_{wd}\), giving it explicit access to the FA model's belief distribution.
+    \item The WD classifier (\texttt{clf\_wd}) is trained on \(X_{wd}\), giving it explicit access to the FA model's belief distribution.
 \end{enumerate}
 
 \begin{align}
 X_{\text{base}} &= [X_{\text{complaint}} \mid X_{\text{dtc\_tfidf}} \mid X_{\text{dtc\_flags}} \mid {} \notag \\
 &\quad X_{\text{supplier}} \mid X_{\text{mileage}} \mid X_{\text{year}} \mid {} \notag \\
-&\quad X_{\text{mileage\_bracket}} \mid X_{\text{claim\_age}} \mid X_{\text{voltage\_bracket}} \mid {} \notag \\
-&\quad X_{\text{dtc\_count\_bracket}} \mid X_{\text{interactions}}] \\
+&\quad X_{\text{mileage\_bracket}} \mid X_{\text{claim\_age}} \mid X_{\text{voltage}} \mid {} \notag \\
+&\quad X_{\text{voltage\_bracket}} \mid X_{\text{dtc\_count\_bracket}} \mid {} \notag \\
+&\quad X_{\text{interactions}}] \\
 \text{fa\_probs} &= \texttt{clf\_fa.predict\_proba}(X_{\text{base}}) \\
 X_{\text{wd}} &= [X_{\text{base}} \mid \text{fa\_probs}]
 \end{align}
 
-\textbf{Critical implementation detail --- Out-of-Fold (OOF) probabilities:} Naively training \texttt{clf\_fa} on all of \(X_{tr}\) and then using its in-sample probabilities to train \texttt{clf\_wd} would introduce data leakage. TRACE avoids this by using 5-fold cross-validation to generate OOF FA probabilities for the training set, ensuring that the probabilities passed to \texttt{clf\_wd} during its training come from a held-out fold that \texttt{clf\_fa} was not trained on. The final \texttt{clf\_fa} is then retrained on all of \(X_{tr}\) for inference.
+where \(X_{\text{voltage}}\) is the raw voltage value scaled by \texttt{StandardScaler}, \(X_{\text{voltage\_bracket}}\) is a 7-level one-hot encoding (very\_low through extreme), and \(X_{\text{interactions}}\) contains four binary cross-features: \texttt{volt\_high\_and\_P}, \texttt{volt\_low\_and\_U}, \texttt{volt\_normal\_and\_C}, and \texttt{has\_multiple\_prefixes}.
+
+\textbf{Critical implementation detail --- Out-of-Fold (OOF) probabilities:} Naively training \texttt{clf\_fa} on all of \(X_{tr}\) and then using its in-sample probabilities to train \texttt{clf\_wd} would introduce data leakage --- the FA model would ``know'' the training examples too well, producing overconfident probability vectors that would not generalise to unseen data. TRACE avoids this by using 5-fold cross-validation (\texttt{cross\_val\_predict} with \texttt{method="predict\_proba"}) to generate OOF FA probabilities for the training set, ensuring that the probabilities passed to \texttt{clf\_wd} during its training come from a held-out fold that \texttt{clf\_fa} was not trained on. After the OOF probabilities are obtained, the final \texttt{clf\_fa} is retrained on all of \(X_{tr}\) for inference, so that \texttt{clf\_fa.predict\_proba()} at prediction time uses the full training set.
 
 \textbf{ML confidence calculation:} The ML confidence is computed as the geometric mean of the top-class probabilities from both classifiers:
-\begin{equation}
-\text{ml\_confidence} = \sqrt{\text{FA\_top\_prob} \times \text{WD\_top\_prob}} \times 100
-\end{equation}
-clamped to the range [0, 98].
 
-\textbf{Historical note:} The cascade architecture was originally implemented with RandomForest classifiers. It was migrated to XGBoost in commit \texttt{a518371} with tuned hyperparameters (1000 estimators, max\_depth=10, learning\_rate=0.02) in commit \texttt{98b61ae}.
+\begin{equation}
+{ml\_confidence} = \mathrm{round}\!\left(\min\!\left(98.0,\; \max\!\left(0.0,\; \sqrt{\text{FA\_top\_prob} \times \text{WD\_top\_prob}} \times 100\right)\right),\; 1\right)
+\end{equation}
+
+where the result is clamped to $[0, 98]$ and rounded to one decimal place. The geometric mean is used rather than the arithmetic mean because it penalises cases where either classifier is uncertain: if either $\text{FA\_top\_prob}$ or $\text{WD\_top\_prob}$ is low, the product drops sharply, producing a low confidence that appropriately routes the claim to manual review.
+
+\textbf{XGBoost hyperparameters:} Both \texttt{clf\_fa} and \texttt{clf\_wd} are configured with identical tuned parameters: \texttt{n\_estimators=1000}, \texttt{max\_depth=10}, \texttt{learning\_rate=0.02}, \texttt{min\_child\_weight=3}, \texttt{subsample=0.8}, \texttt{colsample\_bytree=0.8}, \texttt{reg\_lambda=0.1}, \texttt{random\_state=42}. The low learning rate combined with many trees provides stable convergence, while \texttt{min\_child\_weight} and \texttt{reg\_lambda} prevent overfitting on the synthetic training data. The cascade architecture was originally implemented with RandomForest classifiers and was migrated to XGBoost in commit \texttt{a518371}; the tuned hyperparameters were finalised in commit \texttt{98b61ae}.
 
 \textbf{Used in:} Section 5.3 (OOF Cascade Training), Section 3.8.3 (Cross-Validation)
 
