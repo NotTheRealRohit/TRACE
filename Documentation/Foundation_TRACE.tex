@@ -358,17 +358,88 @@ The confidence values associated with rules are not computed from data; they are
 
 \subsection{Confidence Thresholding and Score Combination}
 
-TRACE does not output the rule confidence directly. Instead, the rule confidence and the ML model confidence are blended through a weighted combination scheme to produce a single unified confidence score. This score is then compared against two fixed thresholds:
+TRACE does not output the rule confidence directly. Instead, the rule confidence, the ML model confidence, and optionally the LLM signal are blended through a weighted combination scheme to produce a single unified confidence score. The \texttt{combine\_scores()} function in \texttt{ml\_predictor.py} (lines 664--808) implements this logic across four distinct scenarios depending on whether a rule fired, whether the rule and ML agree, and whether an LLM signal is present.
+
+The combination logic is governed by a set of module-level constants defined at the top of \texttt{ml\_predictor.py}:
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{|p{5.5cm}|p{2cm}|p{5.5cm}|}
+\hline
+\textbf{Constant} & \textbf{Value} & \textbf{Purpose} \\ \hline
+\texttt{CONFIDENCE\_THRESHOLD\_FIRM} & 85.0 & Above this, decision is firm \\ \hline
+\texttt{CONFIDENCE\_THRESHOLD\_MANUAL} & 65.0 & Below this, requires manual review \\ \hline
+\texttt{AGREEMENT\_BONUS} & 5.0 & Added when rule and ML agree \\ \hline
+\texttt{DISAGREEMENT\_GAP\_THRESHOLD} & 20.0 & Rule/ML confidence gap tolerance \\ \hline
+\texttt{RULE\_WEIGHT\_AGREE} & 0.70 & Rule weight when rule and ML agree \\ \hline
+\texttt{ML\_WEIGHT\_AGREE} & 0.30 & ML weight when rule and ML agree \\ \hline
+\texttt{RULE\_WEIGHT\_DISAGREE} & 0.55 & Rule weight when rule and ML disagree \\ \hline
+\texttt{ML\_WEIGHT\_DISAGREE} & 0.35 & ML weight when rule and ML disagree \\ \hline
+\texttt{LLM\_WEIGHT} & 0.15 & LLM signal weight when present \\ \hline
+\texttt{LLM\_LOW\_CONFIDENCE\_THRESHOLD} & 0.3 & Below this, LLM signal is weak \\ \hline
+\texttt{LLM\_LOW\_CONFIDENCE\_PENALTY} & 0.7 & Multiplier for weak LLM input (no rule) \\ \hline
+\texttt{LLM\_CONFIDENCE\_FOR\_TAG} & 0.5 & Minimum LLM conf for engine tag \\ \hline
+\end{tabular}
+\end{table}
+
+When an LLM signal is present, the LLM's categorisation is mapped to a warranty decision via the \texttt{LLM\_CATEGORY\_TO\_WARRANTY} dictionary to determine agreement with the rule and ML outputs:
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{|p{4cm}|p{9cm}|}
+\hline
+\textbf{LLM Category} & \textbf{Mapped Warranty Decision} \\ \hline
+\texttt{moisture\_damage} & Customer Failure \\ \hline
+\texttt{physical\_damage} & Customer Failure \\ \hline
+\texttt{ntf} & According to Specification \\ \hline
+\texttt{electrical\_issue} & Production Failure \\ \hline
+\texttt{engine\_symptom} & Production Failure \\ \hline
+\texttt{communication\_fault} & Production Failure \\ \hline
+\texttt{other} & None (no agreement signal) \\ \hline
+\end{tabular}
+\end{table}
+
+The combined confidence is computed differently for each scenario. Let \(C_{\text{rule}}\) denote the rule confidence, \(C_{\text{ml}}\) the ML confidence, and \(C_{\text{llm}} = \text{llm\_confidence} \times 100\) the LLM confidence scaled to the 0--100 range:
+
+\begin{align}
+\text{Rule + ML agree, LLM agrees:}\quad &
+0.595 \times C_{\text{rule}} + 0.255 \times C_{\text{ml}} + 0.15 \times C_{\text{llm}} + 5.0 \\
+\text{Rule + ML agree, no LLM signal:}\quad &
+0.70 \times C_{\text{rule}} + 0.30 \times C_{\text{ml}} + 2.0 \\
+\text{Rule + ML disagree, LLM agrees with either:}\quad &
+0.4675 \times C_{\text{rule}} + 0.2975 \times C_{\text{ml}} + 0.15 \times C_{\text{llm}} \\
+\text{Rule + ML disagree, no LLM signal:}\quad &
+0.55 \times C_{\text{rule}} + 0.35 \times C_{\text{ml}} \\
+\text{No rule fired (LLM present):}\quad &
+0.85 \times C_{\text{ml}} + 0.15 \times C_{\text{llm}}
+\end{align}
+
+The resulting combined confidence is clamped to the range $[0.0, 98.0]$ and rounded to one decimal place. If no rule fired and the LLM confidence is below \texttt{LLM\_LOW\_CONFIDENCE\_THRESHOLD} (0.3), an additional penalty multiplier of \texttt{LLM\_LOW\_CONFIDENCE\_PENALTY} (0.7) is applied before clamping.
+
+The clamped confidence is then compared against two fixed thresholds to determine the final status:
 
 \begin{align}
 \texttt{CONFIDENCE\_THRESHOLD\_FIRM} &= 85.0 \\
 \texttt{CONFIDENCE\_THRESHOLD\_MANUAL} &= 65.0
 \end{align}
 
+The status assignment follows a three-branch decision tree depending on whether a rule fired and whether the rule and ML outputs agree:
+
 \begin{itemize}
-    \item \( \geq 85.0 \) \(\rightarrow\) Firm warranty decision output
-    \item \(65.0 \leq \text{score} < 85.0\) \(\rightarrow\) Conditional decision output
-    \item \( < 65.0 \) \(\rightarrow\) Needs Manual Review
+    \item \textbf{Rule fired + agreement:} If combined confidence $\geq 85.0$, the rule's status is returned as a firm decision. If $65.0 \leq$ confidence $< 85.0$, the rule's status is returned cautiously. If confidence $< 65.0$, the status defaults to ``Needs Manual Review''.
+
+    \item \textbf{Rule fired + disagreement:} If the confidence gap between rule and ML is $\leq 20.0$ (the \texttt{DISAGREEMENT\_GAP\_THRESHOLD}), the rule's status is returned regardless of the combined confidence level. If the gap exceeds 20.0 and combined confidence $\geq 85.0$, the rule's status is still returned. In the $65.0$--$85.0$ range, the rule's status is returned as a cautious decision. Only when confidence $< 65.0$ does the status become ``Needs Manual Review''.
+
+    \item \textbf{No rule fired:} If combined confidence $\geq 65.0$, the ML warranty decision is mapped to a status: Production Failure and According to Specification map to ``Approved'', Customer Failure maps to ``Rejected''. If confidence $< 65.0$, the status is ``Needs Manual Review''.
+\end{itemize}
+
+The \texttt{decision\_engine} tag indicates which layers contributed to the final decision. It has four possible values:
+
+\begin{itemize}
+    \item \texttt{LLM+Rule+ML} --- rule fired and LLM signal present (LLM confidence $\geq 0.5$)
+    \item \texttt{Rule+ML} --- rule fired, no LLM signal
+    \item \texttt{LLM+ML} --- no rule fired, LLM signal present
+    \item \texttt{ML} --- no rule fired, no LLM signal
 \end{itemize}
 
 \textbf{Used in:} Section 3.10.3 (Score Combination), Section 5.5 (Threshold Calibration)
