@@ -94,7 +94,8 @@ def categorize_notes(notes: str, dtc_code: str, timeout: int = 30) -> dict:
         "model": MODEL,
         "messages": [{"role": "user", "content": prompt}],
         "response_format": {"type": "json_object"},
-        "temperature": 0.3,
+        "temperature": 0,
+        "seed": 42,
     }
 
     t0 = time.monotonic()
@@ -214,7 +215,8 @@ def format_output(combined: dict, features: dict, timeout: int = 30) -> dict | N
         "model": MODEL,
         "messages": [{"role": "user", "content": prompt}],
         "response_format": {"type": "json_object"},
-        "temperature": 0.3,
+        "temperature": 0,
+        "seed": 42,
     }
 
     t0 = time.monotonic()
@@ -266,6 +268,15 @@ DTC Code: {dtc_code}
 Classify into EXACTLY ONE category from this list:
   moisture_damage, physical_damage, ntf, electrical_issue,
   engine_symptom, communication_fault, other
+
+DISAMBIGUATION RULES (apply in order — first match wins):
+1. If notes mention overheating, jerking, pickup, acceleration, fuel consumption, idle, rough → engine_symptom (NOT electrical_issue)
+2. If notes mention CAN bus, LIN bus, communication, network, U-code → communication_fault
+3. If notes mention moisture, water, wet, flood, rain, humidity, corrosion → moisture_damage
+4. If notes mention crack, broken, impact, collision, bent, misuse, dropped, physical damage → physical_damage
+5. If notes mention no fault, ntf, no trouble, no issue, no defect, intermittent, cannot reproduce → ntf
+6. If notes mention electrical short, wiring problems (without engine symptoms) → electrical_issue
+7. Otherwise → other
 
 Also provide:
 - normalized_complaint: one of these exact strings:
@@ -325,7 +336,8 @@ def understand_claim(notes: str, dtc_code: str, timeout: int = 30) -> dict | Non
         "model": MODEL,
         "messages": [{"role": "user", "content": prompt}],
         "response_format": {"type": "json_object"},
-        "temperature": 0.3,
+        "temperature": 0,
+        "seed": 42,
     }
 
     t0 = time.monotonic()
@@ -490,7 +502,8 @@ def translate_to_ml_features(
         "model": MODEL,
         "messages": [{"role": "user", "content": prompt}],
         "response_format": {"type": "json_object"},
-        "temperature": 0.3,
+        "temperature": 0,
+        "seed": 42,
     }
 
     t0 = time.monotonic()
