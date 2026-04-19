@@ -814,17 +814,19 @@ The dataset is divided into a training set (80\%) and a held-out test set (20\%)
 
 All feature transformers are fitted using only the training split and then applied to both training and test sets.
 
+The source dataset is \texttt{synthetic\_warranty\_claims\_v9.csv} containing 100{,}000 warranty claims from 2019--2025. The target variables are Failure Analysis (6 classes) and Warranty Decision (3 classes). Feature engineering (Section 4) is applied independently to each split after the partition.
+
 \subsection{Data Leakage and Prevention}
 
-Data leakage occurs when information from the test set is inadvertently used during model training, causing inflated evaluation metrics.
+Data leakage occurs when information from the test set is inadvertently used during model training, causing inflated evaluation metrics that do not generalise.
 
 Two forms of leakage are particularly relevant to TRACE:
 \begin{itemize}
-    \item \textbf{Transformer leakage}
-    \item \textbf{Cascade leakage}
+    \item \textbf{Transformer leakage:} If \texttt{fit\_transform()} is called on the full dataset instead of the training split only, statistics such as TF-IDF vocabulary, OHE categories, and scaler means/variances would incorporate test data. TRACE prevents this by fitting all 10 transformers on \texttt{df\_tr} exclusively and applying \texttt{transform()} to \texttt{df\_te}.
+    \item \textbf{Cascade leakage:} In the cascade architecture (Section 3.4), the WD classifier uses FA classifier probabilities as input features. If the FA model's in-sample predictions (on data it was trained on) were used, the probabilities would be overconfident and unrealistically well-calibrated, giving the WD classifier an unfair advantage during training. TRACE prevents this by using out-of-fold probabilities (Section 5.3).
 \end{itemize}
 
-\textbf{Rule:} Fit on train, transform on test.
+\textbf{Rule:} Fit on train, transform on test. This applies to all transformers and to the cascade probability generation.
 
 \subsection{Out-of-Fold Cross-Validation for Cascade Training}
 
@@ -837,6 +839,8 @@ K-fold cross-validation partitions the training set into \(K\) equal-sized folds
 \end{align}
 
 TRACE uses \texttt{cross\_val\_predict()} with \texttt{cv=5} and \texttt{method="predict\_proba"} to generate OOF FA probabilities.
+
+After OOF probabilities are generated for the entire training set, the final \texttt{clf\_fa} is retrained on all of \(X_{\text{tr}}\) so that inference-time predictions benefit from the full training data. The WD classifier (\texttt{clf\_wd}) is then trained on the augmented feature matrix \(X_{\text{wd\_tr}} = [X_{\text{tr}} \mid \text{fa\_probs\_tr}]\). See Section 3.4 for the full cascade architecture.
 
 \subsection{Model Serialisation with Pickle}
 
@@ -862,6 +866,8 @@ bundle = {
 \end{verbatim}
 
 \textbf{Historical note:} The original bundle contained RandomForest classifiers and fewer transformers (no voltage\_scaler, ohe\_voltage\_bracket, ohe\_dtc\_count\_bracket). The bundle was expanded when voltage features and DTC count brackets were added to the ML model.
+
+The bundle is loaded at application startup in \texttt{main.py} and used by the \texttt{run\_ml()} function in \texttt{ml\_predictor.py} for inference. See Section 6.1 (Deployment) for the loading and inference pipeline.
 
 \textbf{Used in:} Section 5.1 (Training and Saving), Section 6.1 (Deployment)
 
