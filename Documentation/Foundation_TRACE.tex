@@ -458,10 +458,10 @@ The core computation in a Transformer encoder layer is:
 
 where:
 \begin{itemize}
-    \item \(Q\) = Query matrix
-    \item \(K\) = Key matrix
-    \item \(V\) = Value matrix
-    \item \(d_k\) = key/query dimension
+    \item $Q$ = Query matrix
+    \item $K$ = Key matrix
+    \item $V$ = Value matrix
+    \item $d_k$ = key/query dimension
 \end{itemize}
 
 Multi-head attention is defined as:
@@ -485,7 +485,7 @@ TRACE uses structured prompts with four key design patterns:
     \item \textbf{Explicit output format specification:} Each prompt instructs the model to respond only with JSON in an exact format.
     \item \textbf{Role framing:} Prompts begin with role definitions such as ``You are an automotive warranty analyst.''
     \item \textbf{Enumerated constraints:} Allowed values for categorical outputs are listed explicitly in the prompt to eliminate hallucinated outputs.
-    \item \textbf{Disambiguation rules:} Stage 1 includes ordered disambiguation rules (first match wins) to resolve ambiguous categories (e.g., ``overheating'' $\rightarrow$ engine\_symptom, not electrical\_issue).
+    \item \textbf{Disambiguation rules:} Stage 1 includes ordered disambiguation rules (first match wins) to resolve ambiguous categories (e.g., ``overheating'' $\rightarrow$ \texttt{engine\_symptom}, not \texttt{electrical\_issue}).
 \end{itemize}
 
 TRACE employs three distinct prompt templates: \texttt{UNDERSTAND\_CLAIM\_PROMPT}, \texttt{TRANSLATE\_ML\_FEATURES\_PROMPT}, and \texttt{FORMAT\_OUTPUT\_PROMPT}.
@@ -517,7 +517,7 @@ The integration uses a standard HTTP POST request to the \texttt{/v1/chat/comple
 
 The LLM layer is entirely optional: if neither \texttt{OPENAI\_API\_KEY} nor \texttt{OPENROUTER\_API\_KEY} is set, or if the technician note is trivially short ($\leq$ 5 characters), the pipeline bypasses all three LLM stages and falls back to deterministic feature extraction. This graceful degradation ensures the system remains operational in air-gapped or cost-sensitive deployments.
 
-Retry logic with exponential back-off (\(2^{\text{attempt}}\) seconds, max 2 retries) is implemented in \texttt{understand\_claim\_with\_retry()} to handle transient network failures and rate limiting.
+Retry logic with exponential back-off ($2^{\text{attempt}}$ seconds, max 2 retries) is implemented in \texttt{understand\_claim\_with\_retry()} to handle transient network failures and rate limiting.
 
 \textbf{LLM Categories (7 classes):} The LLM categorizes technician notes into one of: \texttt{moisture\_damage}, \texttt{physical\_damage}, \texttt{ntf}, \texttt{electrical\_issue}, \texttt{engine\_symptom}, \texttt{communication\_fault}, or \texttt{other}.
 
