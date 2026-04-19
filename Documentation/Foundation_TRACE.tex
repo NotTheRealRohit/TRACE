@@ -738,16 +738,19 @@ This mileage\_bracket feature is derived after the train/test split and then one
 
 \subsection{Voltage Binning and Bracket Encoding}
 
-Voltage readings are discretised into brackets based on critical automotive thresholds:
+Voltage readings are discretised into seven brackets based on critical automotive thresholds. The finer granularity compared to the original four-bin scheme captures the distinct failure-mode boundaries at 13.5\,V (low-charging threshold), 14.5\,V (upper normal), 15.4\,V (EOS onset for ASIC CJ327), and 16.0\,V (over-voltage rule trigger):
 
 \begin{itemize}
-    \item \([0, 11.0)\) = \texttt{under\_voltage} (battery depleted)
-    \item \([11.0, 15.4)\) = \texttt{normal} (normal operating range)
-    \item \([15.4, 17.0)\) = \texttt{high} (EOS threshold for ASICs)
-    \item \([17.0, \infty)\) = \texttt{extreme} (severe over-voltage)
+    \item \([0, 11.0]\) = \texttt{very\_low} (battery depleted)
+    \item \((11.0, 13.5]\) = \texttt{low} (below normal charging)
+    \item \((13.5, 14.5]\) = \texttt{normal} (normal operating range)
+    \item \((14.5, 15.4]\) = \texttt{moderate\_high} (approaching EOS threshold)
+    \item \((15.4, 16.0]\) = \texttt{high} (EOS threshold for ASICs)
+    \item \((16.0, 17.0]\) = \texttt{very\_high} (severe over-voltage)
+    \item \((17.0, \infty)\) = \texttt{extreme} (track-burnt EOS)
 \end{itemize}
 
-This voltage\_bracket feature captures non-linear voltage effects that a single scaled numeric would miss.
+This voltage\_bracket feature captures non-linear voltage effects that a single scaled numeric would miss. The interaction features (\texttt{volt\_high\_and\_P}, \texttt{volt\_low\_and\_U}, \texttt{volt\_normal\_and\_C}) are defined against the same thresholds used here (15.4\,V for ``high'', 11.0\,V for ``low'', 11.0--14.5\,V for ``normal''), ensuring consistency between bracket encoding and boolean cross-terms.
 
 \subsection{DTC Count Bracket Encoding}
 
@@ -787,9 +790,12 @@ This feature directly encodes warranty eligibility and has high practical value.
 
 The TRACE feature matrix is assembled from a heterogeneous mix of dense arrays and sparse matrices. All components are combined using \texttt{scipy.sparse.hstack()}:
 
-\begin{equation}
-X = \texttt{hstack}([X_{\text{complaint}}, X_{\text{dtc\_tfidf}}, X_{\text{dtc\_flags}}, X_{\text{supplier}}, X_{\text{mileage}}, X_{\text{year}}, X_{\text{mileage\_bracket}}, X_{\text{claim\_age}}, X_{\text{voltage\_bracket}}, X_{\text{dtc\_count\_bracket}}, X_{\text{interactions}}])
-\end{equation}
+\begin{align}
+X = \texttt{hstack}([&X_{\text{complaint}} \mid X_{\text{dtc\_tfidf}} \mid X_{\text{dtc\_flags}} \mid {} \notag \\
+&X_{\text{supplier}} \mid X_{\text{mileage}} \mid X_{\text{year}} \mid {} \notag \\
+&X_{\text{mileage\_bracket}} \mid X_{\text{claim\_age}} \mid X_{\text{voltage}} \mid {} \notag \\
+&X_{\text{voltage\_bracket}} \mid X_{\text{dtc\_count\_bracket}} \mid X_{\text{interactions}}])
+\end{align}
 
 The resulting sparse matrix \(X\) is passed directly to the classifiers.
 
@@ -1111,7 +1117,7 @@ High-Value DTC One-Hots & \texttt{HIGH\_VALUE\_DTCS} list ($\sim$90 codes) as bi
 One-Hot Encoding & Complaint, supplier, mileage bracket, voltage bracket, DTC count bracket OHE \\ \hline
 Standard Scaling & Mileage, year, claim age, voltage scalers \\ \hline
 Mileage Binning & \texttt{pd.cut()} + mileage bracket OHE \\ \hline
-Voltage Binning & voltage\_bracket OHE (under\_voltage, normal, high, extreme) \\ \hline
+Voltage Binning & voltage\_bracket OHE (very\_low, low, normal, moderate\_high, high, very\_high, extreme) \\ \hline
 DTC Count Binning & dtc\_count\_bracket OHE (none, single, few, many) \\ \hline
 Interaction Features & volt\_high\_and\_P, volt\_low\_and\_U, volt\_normal\_and\_C, has\_multiple\_prefixes \\ \hline
 Claim Age Feature & Derived from claim date and vehicle year \\ \hline
