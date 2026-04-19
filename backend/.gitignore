@@ -1,2 +1,12 @@
 .env
 !.env.example
+
+# Generated data and backups
+*.xlsx
+*.txt
+*_v*.csv
+key.txt
+resave_bundle.py
+TRACE_complaint_freetext_agent_plan*.md
+Backend_Failure_Analysis_*.xlsx
+backup/
