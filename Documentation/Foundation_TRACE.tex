@@ -529,7 +529,7 @@ Retry logic with exponential back-off ($2^{\text{attempt}}$ seconds, max 2 retri
 
 \subsection{TF-IDF Vectorisation of DTC Text}
 
-Term Frequency Inverse Document Frequency (TF-IDF) is a statistical measure that quantifies how characteristic a term is to a specific document relative to a corpus. It is the primary mechanism by which TRACE converts the raw DTC code string (e.g., ``P0562 P0301'') into a numerical feature vector for the ML classifier.
+Term Frequency Inverse Document Frequency (TF-IDF) is a statistical measure that quantifies how characteristic a term is to a specific document relative to a corpus. It is the primary mechanism by which TRACE converts the raw DTC code string into a numerical feature vector for the ML classifier.
 
 \begin{align}
 TF(t,d) &= \frac{\text{count of } t \text{ in } d}{\text{total terms in } d} \\
@@ -543,41 +543,97 @@ where:
     \item \(df(t)\) = number of documents containing term \(t\)
 \end{itemize}
 
-In TRACE, each ``document'' is the space-joined DTC string for one claim, and the corpus is the full training set. The TF-IDF vectoriser is configured with \texttt{max\_features=40}, retaining only the 40 most informative DTC token types across the corpus.
+In TRACE, each ``document'' is the space-joined DTC string for one claim. The raw fault code input uses comma-separated codes (e.g., ``C0045, P0987''), which \texttt{extract\_dtc\_features()} splits on commas and re-joins with spaces (e.g., ``C0045 P0987'') before TF-IDF tokenisation. The corpus is derived from the training split of \texttt{synthetic\_warranty\_claims\_v9.csv} (100{,}000 rows, model years 2019--2025). The TF-IDF vectoriser is configured with \texttt{max\_features=40}, retaining only the 40 most informative DTC token types across the corpus.
 
 \textbf{Critical:} The TF-IDF vectoriser is fitted exclusively on the training split. At inference time, the stored vocabulary and IDF weights are applied via \texttt{.transform()}. Fitting on the full dataset before splitting would constitute data leakage.
 
 \textbf{Used in:} Section 3.8.2 (Data Leakage), Section 5.1 (Feature Engineering)
 
+\subsection{DTC Feature Extraction (\texttt{extract\_dtc\_features})}
+
+The \texttt{extract\_dtc\_features()} function in \texttt{ml\_predictor.py} parses the raw fault code string into structured features for ML inference. It is the fallback feature extraction path when the LLM is unavailable; when the LLM is present, these DTC features are still produced and merged with the LLM-translated features.
+
+For a non-empty fault code string, the function splits on commas, normalises to uppercase, and returns:
+\begin{itemize}
+    \item \texttt{dtc\_count} --- integer count of DTC codes present
+    \item \texttt{has\_P}, \texttt{has\_U}, \texttt{has\_C}, \texttt{has\_B} --- binary prefix flags indicating whether at least one code starts with each letter
+    \item \texttt{dtc\_text} --- space-joined string of all parsed codes, passed to the TF-IDF vectoriser
+    \item \texttt{dtc\_<code>} --- one binary flag per code in \texttt{HIGH\_VALUE\_DTCS} (see Section 4.2.4)
+\end{itemize}
+
+For empty or invalid inputs (empty string, ``NA'', ``NAN'', ``NONE''), the function returns zeros for all fields and \texttt{dtc\_text = "none"}.
+
+\textbf{Used in:} Section 3.4 (Cascade Architecture), Section 3.10 (Six-Stage Pipeline)
+
 \subsection{Keyword-Based Complaint Matching (\texttt{match\_complaint})}
 
 In the current implementation, the technician's free-text notes are mapped to a fixed enumeration of 14 known complaint labels through a two-stage lookup. This mapping is performed by the \texttt{match\_complaint()} function in \texttt{ml\_predictor.py}.
 
-\textbf{Stage 1 Keyword Map:} The function iterates over a dictionary of keywords and returns the first complaint whose keyword appears as a substring in the lowercased notes.
+\textbf{Stage 1 Keyword Map:} The function iterates over a dictionary of 18 keyword-to-complaint mappings and returns the first complaint whose keyword appears as a substring in the lowercased notes. The mapping follows a first-match-wins strategy; keyword order therefore matters. The 18 keywords map onto the 14 complaint labels, with some labels accessible through multiple keywords (e.g., both ``jerk'' and ``accel'' map to ``Engine jerking during acceleration'').
 
 \textbf{Stage 2 Fuzzy Fallback:} If no keyword matches, \texttt{difflib.get\_close\_matches()} is called with a similarity cutoff of 0.25 to find the most similar complaint label in the known list. If no match exceeds the cutoff, the default label ``OBD Light ON'' is returned.
 
-The resulting complaint label is one-hot encoded to produce a sparse binary feature vector. This feature column is the primary carrier of symptom information for the ML classifier.
+The 14 complaint labels in \texttt{KNOWN\_COMPLAINTS} are:
 
-\textbf{Limitation:} The fixed-vocabulary approach means that nuanced technician descriptions collapse to generic labels, losing contextual signal. The planned NLP enhancement described next addresses this directly.
+\begin{verbatim}
+Engine jerking during acceleration, Starting Problem,
+High fuel consumption, OBD Light ON, Vehicle not starting,
+Low pickup, Engine overheating, Rough idling,
+Brake warning light ON, ABS warning light ON,
+Battery warning light ON, Engine stalling,
+Multiple warning lights ON, Transmission jerking
+\end{verbatim}
+
+The resulting complaint label is one-hot encoded via \texttt{OneHotEncoder} to produce a sparse binary feature vector. This feature column is the primary carrier of symptom information for the ML classifier.
+
+\textbf{Limitation:} The fixed-vocabulary approach means that nuanced technician descriptions collapse to generic labels, losing contextual signal. The LLM-based semantic classification described in Section 4.3 addresses this directly, and planned NLP enhancements in Section 4.4 propose replacing it with continuous representations.
 
 \subsection{High-Value DTC One-Hot Flags}
 
-Beyond TF-IDF, TRACE constructs explicit binary indicator features for a curated list of high-value DTC codes. For each code in the \texttt{HIGH\_VALUE\_DTCS} list, a binary feature \texttt{dtc\_<code>} is 1 if that specific code is present in the claim's fault code string, and 0 otherwise.
+Beyond TF-IDF, TRACE constructs explicit binary indicator features for a curated list of approximately 90 DTC codes. For each code in the \texttt{HIGH\_VALUE\_DTCS} list, a binary feature \texttt{dtc\_<code>} is 1 if that specific code is present in the claim's fault code string, and 0 otherwise.
+
+The list was expanded significantly for the v9 dataset (from the original 9 codes to $\sim$90). The codes span the following categories:
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{|p{3.5cm}|p{5cm}|p{4.5cm}|}
+\hline
+\textbf{Category} & \textbf{DTC Prefix / Examples} & \textbf{Warranty Signal} \\ \hline
+Misfire \& Ignition & P0300--P0306, P0351--P0356 & Strong production failure signal \\ \hline
+OBD Processor & P0562, P0563, P0601--P0608, P0610--P0617 & ECU/controller internal failure \\ \hline
+Power Supply & P0620, P0691--P0694 & Charging system faults \\ \hline
+Catalyst \& Evap & P0420, P0430, P0455--P0457 & Emissions system issues \\ \hline
+Vehicle Speed \& Shaft & P0500--P0502, P0720 & Speed sensor failures \\ \hline
+CAN/LIN Bus & U0001, U0002, U0028--U0038, U0073, U0100--U0184 & Network communication faults \\ \hline
+Body Electronics & B1031, B1045, B1234, B2960, B3055 & Body module failures \\ \hline
+Chassis & C0031, C0036, C0045, C0051, C0082, C0265, C0460, C0550 & Chassis/braking faults \\ \hline
+Sensors (O2, Temp, MAF) & P0038, P0054, P0069--P0118, P0131--P0174 & Sensor degradation patterns \\ \hline
+\end{tabular}
+\end{table}
 
 This approach allows the ML classifier to exploit the strong warranty signal associated with specific DTC codes directly, without relying on the TF-IDF vocabulary to surface them with adequate weight.
 
 \textbf{Used in:} Section 4.3 (Feature Engineering Details), Section 5.1 (Training)
 
-\section{Natural Language Processing Planned Enhancement}
+\section{Natural Language Processing --- Current and Planned Enhancements}
+
+\subsection{LLM-Based Semantic Classification (Current Implementation)}
+
+TRACE integrates an LLM-driven semantic understanding layer as part of its six-stage prediction pipeline. This is not merely a partial implementation but a fully operational component that processes every claim when API access is available (see Section 3.10 for the full pipeline).
+
+\textbf{Stage 1 --- Claim Understanding:} \texttt{understand\_claim\_with\_retry()} in \texttt{llm\_client.py} sends the technician notes and DTC code to the LLM with a structured prompt containing disambiguation rules. The LLM returns a JSON object with: \texttt{category} (one of 7 classes), \texttt{normalized\_complaint} (mapped to a \texttt{KNOWN\_COMPLAINTS} label), \texttt{severity}, \texttt{failure\_analysis}, \texttt{reasoning}, and \texttt{confidence}. Retry logic with exponential back-off ($2^{\text{attempt}}$ seconds, max 2 retries) handles transient failures.
+
+\textbf{Stage 3 --- Feature Translation:} When the LLM is available, \texttt{translate\_to\_ml\_features()} replaces the deterministic fallback path. It sends the notes, DTC code, and pre-classified category to the LLM, which returns structured ML features: \texttt{customer\_complaint}, \texttt{dtc\_codes}, \texttt{dtc\_text}, \texttt{dtc\_count}, and the four prefix flags (\texttt{has\_P/U/C/B}). The DTC one-hot flags from \texttt{extract\_dtc\_features()} are then merged into this output to preserve the full feature space.
+
+The LLM layer is entirely optional: if neither \texttt{OPENAI\_API\_KEY} nor \texttt{OPENROUTER\_API\_KEY} is set, or if the technician note is trivially short ($\leq$ 5 characters), the pipeline reverts to the deterministic feature extraction path (\texttt{match\_complaint()} + \texttt{extract\_dtc\_features()}). This graceful degradation ensures operational continuity in air-gapped or cost-sensitive deployments.
 
 \subsection{Motivation: Limitations of the Fixed Complaint Vocabulary}
 
-The current design constrains complaint input to 14 categorical labels. While this simplifies the ML feature space, it introduces two failure modes:
+Despite the LLM semantic layer, the underlying ML feature space still relies on the 14-label one-hot encoding for the complaint feature. This constraint introduces two failure modes:
 
 \begin{itemize}
-    \item \textbf{Information loss:} Technician language is rich in diagnostic nuance.
-    \item \textbf{Mapping brittleness:} The keyword-to-complaint mapping is sensitive to vocabulary differences.
+    \item \textbf{Information loss:} Technician language is rich in diagnostic nuance that collapses to generic labels.
+    \item \textbf{Mapping brittleness:} The keyword-to-complaint mapping is sensitive to vocabulary differences, and the LLM's normalized output is still forced into one of 14 categories.
 \end{itemize}
 
 Replacing this categorical feature with a continuous semantic representation derived from the full text allows the model to leverage the complete information content of the technician's notes.
@@ -594,7 +650,7 @@ Before any vectorisation, raw technician notes must be preprocessed to reduce no
     \item Stemming / Lemmatisation
 \end{itemize}
 
-\subsection{Vectorisation Approaches}
+\subsection{Planned Vectorisation Approaches}
 
 \subsubsection{TF-IDF on Complaint Text}
 
@@ -616,25 +672,27 @@ Cosine similarity between two embeddings is:
 
 Dense embeddings can represent semantically similar complaints as nearby vectors, even when they share no common keywords.
 
-\subsubsection{LLM-Based Semantic Classification (Current Partial Implementation)}
+\subsubsection{LLM Feature Integration During Training}
 
-TRACE already implements a form of NLP-driven complaint understanding through the LLM layer. When the OpenRouter API is available, \texttt{understand\_claim()} semantically categorises the notes and returns a normalised complaint string alongside related fields.
-
-The planned enhancement formally integrates this semantic output as a persistent ML feature by generating dataset-level semantic complaint features during training.
+The current LLM semantic output is used only at inference time. The planned enhancement formally integrates LLM-extracted features during training by generating dataset-level semantic complaint features across the entire training corpus, then persisting the feature mapping for consistent inference. This would require batch LLM calls during model training and a persisted mapping table in the model bundle.
 
 \subsection{Integration Architecture for Free-Text NLP}
 
-Regardless of the chosen vectorisation strategy, the NLP layer integrates into the TRACE pipeline as a feature transformation step:
+Regardless of the chosen vectorisation strategy, the NLP layer integrates into the TRACE pipeline as a feature transformation step within the six-stage architecture:
 
 \begin{align}
 \text{Technician Notes} &\rightarrow [\text{NLP Vectoriser}] \rightarrow X_{\text{complaint\_nlp}} \\
-X_{\text{base}} &= [X_{\text{complaint\_nlp}} \mid X_{\text{dtc\_tfidf}} \mid X_{\text{dtc\_flags}} \mid \cdots] \\
-&\rightarrow \texttt{clf\_fa.predict()} + \texttt{clf\_wd.predict()}
+X_{\text{base}} &= [X_{\text{complaint\_nlp}} \mid X_{\text{dtc\_tfidf}} \mid X_{\text{dtc\_flags}} \mid {} \notag \\
+&\quad X_{\text{supplier}} \mid X_{\text{mileage}} \mid X_{\text{year}} \mid {} \notag \\
+&\quad X_{\text{mileage\_bracket}} \mid X_{\text{claim\_age}} \mid X_{\text{voltage}} \mid {} \notag \\
+&\quad X_{\text{voltage\_bracket}} \mid X_{\text{dtc\_count\_bracket}} \mid {} \notag \\
+&\quad X_{\text{interactions}}] \\
+&\rightarrow \texttt{clf\_fa.predict\_proba()} + \texttt{clf\_wd.predict\_proba()}
 \end{align}
 
-The NLP vectoriser object must be persisted alongside the trained models in the model bundle and called at inference time to transform incoming free-text notes before feature assembly.
+The feature vector shown above reflects the full 13-transformer pipeline currently in production (see Section 3.9 for the complete feature list). The NLP vectoriser object must be persisted alongside the trained models in the model bundle and called at inference time --- either as a scikit-learn transformer for TF-IDF-based approaches, or as a persisted LLM mapping table for semantic features.
 
-\textbf{Used in:} Section 6.2 (Future Work --- NLP Enhancement)
+\textbf{Used in:} Section 3.9 (Feature Engineering), Section 3.10 (Six-Stage Pipeline), Section 6.2 (Future Work --- NLP Enhancement)
 
 \section{Data Preprocessing and Feature Engineering}
 
