@@ -13,3 +13,4 @@ pytesseract
 easyocr
 torch
 opencv-python-headless
+openai>=1.0.0

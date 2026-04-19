@@ -1,7 +1,8 @@
 """
-OpenRouter LLM Client for TRACE Warranty Claims
------------------------------------------------
-Handles API calls to OpenRouter for technician note categorization.
+LLM Client for TRACE Warranty Claims
+-------------------------------------
+Supports both OpenAI and OpenRouter providers.
+OpenAI (gpt-4o-mini) is used if OPENAI_API_KEY is set, otherwise falls back to OpenRouter.
 """
 
 import os
@@ -13,7 +14,10 @@ from typing import Optional
 from logging_config import setup_logging, get_logger
 
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
-MODEL = "arcee-ai/trinity-large-preview:free"
+OPENAI_MODEL = "gpt-4o-mini"
+OPENROUTER_MODEL = "arcee-ai/trinity-large-preview:free"
+
+_openai_client = None
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -21,13 +25,150 @@ setup_logging()
 logger = get_logger("trace.llm_client")
 
 
+def _get_provider() -> Optional[str]:
+    if os.getenv("OPENAI_API_KEY"):
+        return "openai"
+    if os.getenv("OPENROUTER_API_KEY"):
+        return "openrouter"
+    return None
+
 
 def get_api_key() -> str:
-    api_key = os.getenv("OPENROUTER_API_KEY")
+    provider = _get_provider()
+    if provider == "openai":
+        api_key = os.getenv("OPENAI_API_KEY")
+    elif provider == "openrouter":
+        api_key = os.getenv("OPENROUTER_API_KEY")
+    else:
+        logger.error("No LLM provider API key found in environment")
+        raise ValueError(
+            "No LLM provider configured. Set OPENAI_API_KEY or OPENROUTER_API_KEY"
+        )
+
     if not api_key:
-        logger.error("OPENROUTER_API_KEY is not set in environment")
-        raise ValueError("OPENROUTER_API_KEY not set in environment")
+        logger.error("API key is not set in environment")
+        raise ValueError(f"{provider.upper()}_API_KEY not set in environment")
     return api_key
+
+
+def _get_openai_client():
+    global _openai_client
+    if _openai_client is None:
+        from openai import OpenAI
+
+        _openai_client = OpenAI()
+    return _openai_client
+
+
+def _call_llm(prompt: str, timeout: int = 30) -> Optional[str]:
+    provider = _get_provider()
+    if not provider:
+        logger.error("No LLM provider configured")
+        raise RuntimeError(
+            "No LLM provider configured. Set OPENAI_API_KEY or OPENROUTER_API_KEY"
+        )
+
+    t0 = time.monotonic()
+
+    if provider == "openai":
+        return _call_openai(prompt, timeout, t0)
+    else:
+        return _call_openrouter(prompt, timeout, t0)
+
+
+def _call_openai(prompt: str, timeout: int, t0: float) -> Optional[str]:
+    client = _get_openai_client()
+    model = OPENAI_MODEL
+
+    logger.debug("Calling OpenAI | model=%s timeout=%ds", model, timeout)
+
+    try:
+        response = client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"},
+            temperature=0,
+            seed=42,
+            timeout=timeout,
+        )
+    except Exception as e:
+        logger.error("OpenAI request failed: %s", str(e))
+        return None
+
+    elapsed = time.monotonic() - t0
+    logger.debug("OpenAI responded in %.2fs", elapsed)
+
+    content = response.choices[0].message.content
+    logger.debug("Raw LLM response: %s", content)
+    return content
+
+
+def _call_openrouter(prompt: str, timeout: int, t0: float) -> Optional[str]:
+    api_key = get_api_key()
+    model = OPENROUTER_MODEL
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+        "X-OpenRouter-Title": "TRACE Warranty Claims",
+    }
+
+    payload = {
+        "model": model,
+        "messages": [{"role": "user", "content": prompt}],
+        "response_format": {"type": "json_object"},
+        "temperature": 0,
+        "seed": 42,
+    }
+
+    try:
+        logger.debug("Calling OpenRouter | model=%s timeout=%ds", model, timeout)
+        response = requests.post(
+            OPENROUTER_API_URL,
+            headers=headers,
+            json=payload,
+            timeout=timeout,
+        )
+    except requests.Timeout:
+        logger.error("OpenRouter request timed out after %ds", timeout)
+        return None
+    except requests.RequestException as e:
+        logger.error("OpenRouter request failed: %s", str(e))
+        return None
+
+    elapsed = time.monotonic() - t0
+    logger.debug(
+        "OpenRouter responded in %.2fs | status=%d", elapsed, response.status_code
+    )
+
+    if response.status_code == 429:
+        logger.warning("Rate limited by OpenRouter (429)")
+        return None
+
+    if response.status_code != 200:
+        logger.error(
+            "OpenRouter API error | status=%d body=%s",
+            response.status_code,
+            response.text,
+        )
+        return None
+
+    result = response.json()
+    content = result["choices"][0]["message"]["content"]
+    logger.debug("Raw LLM response: %s", content)
+    return content
+
+
+def _parse_json_response(content: str, defaults: dict) -> Optional[dict]:
+    try:
+        parsed = json.loads(content)
+        result = {}
+        for key, default in defaults.items():
+            result[key] = parsed.get(key, default)
+        return result
+    except json.JSONDecodeError:
+        logger.error("Failed to parse LLM response as JSON: %s", content)
+        return None
 
 
 CATEGORIZATION_PROMPT = """You are a warranty claim analyst for automotive electronics.
@@ -56,26 +197,18 @@ Respond ONLY with JSON in this exact format:
 
 
 def categorize_notes(notes: str, dtc_code: str, timeout: int = 30) -> dict:
-    """
-    Call OpenRouter LLM to categorize technician notes.
-
-    Args:
-        notes: Technician's free-text notes
-        dtc_code: Fault code (e.g., "P0562")
-        timeout: Request timeout in seconds (default 30)
-
-    Returns:
-        dict with keys: category, confidence, failure_analysis, reasoning
-
-    Raises:
-        RuntimeError: If API call fails
-    """
-    api_key = get_api_key()
+    provider = _get_provider()
+    if not provider:
+        logger.error("No LLM provider API key found in environment")
+        raise RuntimeError(
+            "No LLM provider configured. Set OPENAI_API_KEY or OPENROUTER_API_KEY"
+        )
 
     logger.info(
-        "Categorizing notes | dtc=%s notes_len=%d",
+        "Categorizing notes | dtc=%s notes_len=%d provider=%s",
         dtc_code or "none",
         len(notes),
+        provider,
     )
     logger.debug("Full technician notes: %s", notes)
 
@@ -84,74 +217,27 @@ def categorize_notes(notes: str, dtc_code: str, timeout: int = 30) -> dict:
         dtc_code=dtc_code or "none",
     )
 
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
-        "X-OpenRouter-Title": "TRACE Warranty Claims",
+    content = _call_llm(prompt, timeout)
+    if content is None:
+        raise RuntimeError("LLM API call failed")
+
+    defaults = {
+        "category": "other",
+        "confidence": 0.8,
+        "failure_analysis": "Unknown",
+        "reasoning": "",
     }
 
-    payload = {
-        "model": MODEL,
-        "messages": [{"role": "user", "content": prompt}],
-        "response_format": {"type": "json_object"},
-        "temperature": 0,
-        "seed": 42,
-    }
+    result = _parse_json_response(content, defaults)
+    if result is None:
+        raise RuntimeError("Failed to parse LLM response")
 
-    t0 = time.monotonic()
-    try:
-        logger.debug("Sending request to OpenRouter | model=%s timeout=%ds", MODEL, timeout)
-        response = requests.post(
-            OPENROUTER_API_URL,
-            headers=headers,
-            json=payload,
-            timeout=timeout,
-        )
-    except requests.Timeout:
-        logger.error("OpenRouter request timed out after %ds", timeout)
-        raise RuntimeError("OpenRouter API request timed out")
-    except requests.RequestException as e:
-        logger.error("OpenRouter request failed: %s", str(e))
-        raise RuntimeError(f"OpenRouter API request failed: {str(e)}")
-
-    elapsed = time.monotonic() - t0
-    logger.debug("OpenRouter responded in %.2fs | status=%d", elapsed, response.status_code)
-
-    if response.status_code == 429:
-        logger.warning("Rate limited by OpenRouter (429)")
-        raise RuntimeError("Rate limited by OpenRouter, try again later")
-
-    if response.status_code != 200:
-        logger.error(
-            "OpenRouter API error | status=%d body=%s",
-            response.status_code,
-            response.text,
-        )
-        raise RuntimeError(f"OpenRouter API error: {response.status_code} - {response.text}")
-
-    result = response.json()
-    content = result["choices"][0]["message"]["content"]
-    logger.debug("Raw LLM response: %s", content)
-
-    try:
-        parsed = json.loads(content)
-        category = parsed.get("category", "other")
-        confidence = parsed.get("confidence", 0.8)
-        logger.info(
-            "Categorization complete | category=%s confidence=%.2f elapsed=%.2fs",
-            category,
-            confidence,
-            elapsed,
-        )
-        return {
-            "category": category,
-            "confidence": confidence,
-            "failure_analysis": parsed.get("failure_analysis", "Unknown"),
-            "reasoning": parsed.get("reasoning", ""),
-        }
-    except json.JSONDecodeError:
-        logger.error("Failed to parse LLM response as JSON: %s", content)
-        return None
+    logger.info(
+        "Categorization complete | category=%s confidence=%.2f",
+        result["category"],
+        result["confidence"],
+    )
+    return result
 
 
 FORMAT_OUTPUT_PROMPT = """You are a warranty claims report writer. Given the structured decision below,
@@ -166,7 +252,7 @@ Rules:
     "Production Failure", "Customer Failure", "According to Specification"
 - failure_analysis: synthesize llm_failure_analysis and ml_failure_analysis
   into one concise root cause sentence (max 20 words)
-- reason: 1–2 sentences explaining the decision in plain language
+- reason: 1-2 sentences explaining the decision in plain language
 - matched_complaint: use customer_complaint from features
 - confidence: use combined_confidence exactly as provided (do not change)
 - decision_engine: use as provided
@@ -185,79 +271,36 @@ Respond ONLY with this JSON:
 
 
 def format_output(combined: dict, features: dict, timeout: int = 30) -> dict | None:
-    """
-    Format the combined decision into human-readable output using LLM.
+    provider = _get_provider()
+    if not provider:
+        logger.error("No LLM provider configured")
+        return None
 
-    Args:
-        combined: Output from combine_scores()
-        features: Output from translate_to_ml_features()
-        timeout: Request timeout in seconds (default 30)
-
-    Returns:
-        dict with keys: status, failure_analysis, warranty_decision, confidence, reason, matched_complaint, decision_engine
-        None if API call fails
-    """
-    api_key = get_api_key()
-
-    logger.info("[STAGE 6] LLM Output Formatting | decision_engine=%s", combined.get("decision_engine", "unknown"))
+    logger.info(
+        "[STAGE 6] LLM Output Formatting | decision_engine=%s provider=%s",
+        combined.get("decision_engine", "unknown"),
+        provider,
+    )
 
     prompt = FORMAT_OUTPUT_PROMPT.format(
         combined_json=json.dumps(combined),
     )
 
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
-        "X-OpenRouter-Title": "TRACE Warranty Claims",
+    content = _call_llm(prompt, timeout)
+    if content is None:
+        return None
+
+    defaults = {
+        "status": "Needs Manual Review",
+        "failure_analysis": combined.get("ml_failure_analysis", "Unknown"),
+        "warranty_decision": combined.get("warranty_decision", ""),
+        "confidence": combined.get("combined_confidence", 50.0),
+        "reason": "",
+        "matched_complaint": features.get("customer_complaint", "OBD Light ON"),
+        "decision_engine": combined.get("decision_engine", "ML"),
     }
 
-    payload = {
-        "model": MODEL,
-        "messages": [{"role": "user", "content": prompt}],
-        "response_format": {"type": "json_object"},
-        "temperature": 0,
-        "seed": 42,
-    }
-
-    t0 = time.monotonic()
-    try:
-        response = requests.post(
-            OPENROUTER_API_URL,
-            headers=headers,
-            json=payload,
-            timeout=timeout,
-        )
-    except requests.Timeout:
-        logger.error("OpenRouter request timed out after %ds", timeout)
-        return None
-    except requests.RequestException as e:
-        logger.error("OpenRouter request failed: %s", str(e))
-        return None
-
-    elapsed = time.monotonic() - t0
-    logger.debug("OpenRouter responded in %.2fs | status=%d", elapsed, response.status_code)
-
-    if response.status_code != 200:
-        logger.error("OpenRouter API error | status=%d", response.status_code)
-        return None
-
-    result = response.json()
-    content = result["choices"][0]["message"]["content"]
-
-    try:
-        parsed = json.loads(content)
-        return {
-            "status": parsed.get("status", "Needs Manual Review"),
-            "failure_analysis": parsed.get("failure_analysis", combined.get("ml_failure_analysis", "Unknown")),
-            "warranty_decision": parsed.get("warranty_decision", combined.get("warranty_decision", "")),
-            "confidence": parsed.get("confidence", combined.get("combined_confidence", 50.0)),
-            "reason": parsed.get("reason", ""),
-            "matched_complaint": parsed.get("matched_complaint", features.get("customer_complaint", "OBD Light ON")),
-            "decision_engine": parsed.get("decision_engine", combined.get("decision_engine", "ML")),
-        }
-    except json.JSONDecodeError:
-        logger.error("Failed to parse LLM response as JSON: %s", content)
-        return None
+    return _parse_json_response(content, defaults)
 
 
 UNDERSTAND_CLAIM_PROMPT = """You are an automotive warranty analyst. Analyze the claim below and respond ONLY with JSON.
@@ -269,14 +312,14 @@ Classify into EXACTLY ONE category from this list:
   moisture_damage, physical_damage, ntf, electrical_issue,
   engine_symptom, communication_fault, other
 
-DISAMBIGUATION RULES (apply in order — first match wins):
-1. If notes mention overheating, jerking, pickup, acceleration, fuel consumption, idle, rough → engine_symptom (NOT electrical_issue)
-2. If notes mention CAN bus, LIN bus, communication, network, U-code → communication_fault
-3. If notes mention moisture, water, wet, flood, rain, humidity, corrosion → moisture_damage
-4. If notes mention crack, broken, impact, collision, bent, misuse, dropped, physical damage → physical_damage
-5. If notes mention no fault, ntf, no trouble, no issue, no defect, intermittent, cannot reproduce → ntf
-6. If notes mention electrical short, wiring problems (without engine symptoms) → electrical_issue
-7. Otherwise → other
+DISAMBIGUATION RULES (apply in order - first match wins):
+1. If notes mention overheating, jerking, pickup, acceleration, fuel consumption, idle, rough -> engine_symptom (NOT electrical_issue)
+2. If notes mention CAN bus, LIN bus, communication, network, U-code -> communication_fault
+3. If notes mention moisture, water, wet, flood, rain, humidity, corrosion -> moisture_damage
+4. If notes mention crack, broken, impact, collision, bent, misuse, dropped, physical damage -> physical_damage
+5. If notes mention no fault, ntf, no trouble, no issue, no defect, intermittent, cannot reproduce -> ntf
+6. If notes mention electrical short, wiring problems (without engine symptoms) -> electrical_issue
+7. Otherwise -> other
 
 Also provide:
 - normalized_complaint: one of these exact strings:
@@ -286,7 +329,7 @@ Also provide:
 - severity: "low" | "medium" | "high"
 - failure_analysis: short root cause string (max 15 words)
 - reasoning: brief explanation (max 30 words)
-- confidence: float 0.0–1.0
+- confidence: float 0.0-1.0
 
 Respond ONLY with this JSON structure, no preamble:
 {{
@@ -301,24 +344,16 @@ Respond ONLY with this JSON structure, no preamble:
 
 
 def understand_claim(notes: str, dtc_code: str, timeout: int = 30) -> dict | None:
-    """
-    Call OpenRouter LLM to perform semantic understanding of the claim.
-
-    Args:
-        notes: Technician's free-text notes
-        dtc_code: Fault code (e.g., "P0562")
-        timeout: Request timeout in seconds (default 30)
-
-    Returns:
-        dict with keys: category, normalized_complaint, severity, failure_analysis, reasoning, confidence
-        None if API call fails
-    """
-    api_key = get_api_key()
+    provider = _get_provider()
+    if not provider:
+        logger.error("No LLM provider configured")
+        return None
 
     logger.info(
-        "[STAGE 1] LLM Understanding | dtc=%s notes_len=%d",
+        "[STAGE 1] LLM Understanding | dtc=%s notes_len=%d provider=%s",
         dtc_code or "none",
         len(notes),
+        provider,
     )
 
     prompt = UNDERSTAND_CLAIM_PROMPT.format(
@@ -326,68 +361,20 @@ def understand_claim(notes: str, dtc_code: str, timeout: int = 30) -> dict | Non
         dtc_code=dtc_code or "none",
     )
 
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
-        "X-OpenRouter-Title": "TRACE Warranty Claims",
+    content = _call_llm(prompt, timeout)
+    if content is None:
+        return None
+
+    defaults = {
+        "category": "other",
+        "normalized_complaint": "OBD Light ON",
+        "severity": "medium",
+        "failure_analysis": "Unknown",
+        "reasoning": "",
+        "confidence": 0.5,
     }
 
-    payload = {
-        "model": MODEL,
-        "messages": [{"role": "user", "content": prompt}],
-        "response_format": {"type": "json_object"},
-        "temperature": 0,
-        "seed": 42,
-    }
-
-    t0 = time.monotonic()
-    try:
-        logger.debug("Sending request to OpenRouter | model=%s timeout=%ds", MODEL, timeout)
-        response = requests.post(
-            OPENROUTER_API_URL,
-            headers=headers,
-            json=payload,
-            timeout=timeout,
-        )
-    except requests.Timeout:
-        logger.error("OpenRouter request timed out after %ds", timeout)
-        return None
-    except requests.RequestException as e:
-        logger.error("OpenRouter request failed: %s", str(e))
-        return None
-
-    elapsed = time.monotonic() - t0
-    logger.debug("OpenRouter responded in %.2fs | status=%d", elapsed, response.status_code)
-
-    if response.status_code == 429:
-        logger.warning("Rate limited by OpenRouter (429)")
-        return None
-
-    if response.status_code != 200:
-        logger.error(
-            "OpenRouter API error | status=%d body=%s",
-            response.status_code,
-            response.text,
-        )
-        return None
-
-    result = response.json()
-    content = result["choices"][0]["message"]["content"]
-    logger.debug("Raw LLM response: %s", content)
-
-    try:
-        parsed = json.loads(content)
-        return {
-            "category": parsed.get("category", "other"),
-            "normalized_complaint": parsed.get("normalized_complaint", "OBD Light ON"),
-            "severity": parsed.get("severity", "medium"),
-            "failure_analysis": parsed.get("failure_analysis", "Unknown"),
-            "reasoning": parsed.get("reasoning", ""),
-            "confidence": parsed.get("confidence", 0.5),
-        }
-    except json.JSONDecodeError:
-        logger.error("Failed to parse LLM response as JSON: %s", content)
-        return None
+    return _parse_json_response(content, defaults)
 
 
 def understand_claim_with_retry(
@@ -396,19 +383,7 @@ def understand_claim_with_retry(
     max_retries: int = 2,
     timeout: int = 30,
 ) -> Optional[dict]:
-    """
-    Call OpenRouter LLM with retry logic for transient failures.
-
-    Args:
-        notes: Technician's free-text notes
-        dtc_code: Fault code (e.g., "P0562")
-        max_retries: Maximum number of retry attempts (default 2)
-        timeout: Request timeout in seconds (default 30)
-
-    Returns:
-        dict with keys: category, normalized_complaint, severity, failure_analysis, reasoning, confidence
-        None if all retries are exhausted
-    """
+    """Call LLM with retry logic for transient failures."""
     logger.info("Starting understand_claim with retry | max_retries=%d", max_retries)
 
     for attempt in range(max_retries):
@@ -416,14 +391,14 @@ def understand_claim_with_retry(
             result = understand_claim(notes, dtc_code, timeout)
             if result is not None:
                 if attempt > 0:
-                    logger.info("Succeeded on retry attempt %d/%d", attempt + 1, max_retries)
+                    logger.info(
+                        "Succeeded on retry attempt %d/%d", attempt + 1, max_retries
+                    )
                 return result
         except Exception as e:
-            logger.warning(
-                "Attempt %d/%d failed: %s", attempt + 1, max_retries, str(e)
-            )
+            logger.warning("Attempt %d/%d failed: %s", attempt + 1, max_retries, str(e))
         if attempt < max_retries - 1:
-            sleep_time = 2 ** attempt
+            sleep_time = 2**attempt
             logger.info("Retrying in %ds...", sleep_time)
             time.sleep(sleep_time)
 
@@ -465,25 +440,16 @@ def translate_to_ml_features(
     llm_category: str,
     timeout: int = 30,
 ) -> dict | None:
-    """
-    Translate raw claim data into ML-ready features using LLM.
-
-    Args:
-        notes: Technician's free-text notes
-        dtc_code: Fault code (e.g., "P0562")
-        llm_category: Category from Stage 1 understanding
-        timeout: Request timeout in seconds (default 30)
-
-    Returns:
-        dict with keys: customer_complaint, dtc_codes, dtc_text, dtc_count, has_P, has_U, has_C, has_B
-        None if API call fails
-    """
-    api_key = get_api_key()
+    provider = _get_provider()
+    if not provider:
+        logger.error("No LLM provider configured")
+        return None
 
     logger.info(
-        "[STAGE 3] LLM Feature Translation | dtc=%s category=%s",
+        "[STAGE 3] LLM Feature Translation | dtc=%s category=%s provider=%s",
         dtc_code or "none",
         llm_category,
+        provider,
     )
 
     prompt = TRANSLATE_ML_FEATURES_PROMPT.format(
@@ -492,57 +458,19 @@ def translate_to_ml_features(
         llm_category=llm_category,
     )
 
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
-        "X-OpenRouter-Title": "TRACE Warranty Claims",
+    content = _call_llm(prompt, timeout)
+    if content is None:
+        return None
+
+    defaults = {
+        "customer_complaint": "OBD Light ON",
+        "dtc_codes": [],
+        "dtc_text": "",
+        "dtc_count": 0,
+        "has_P": 0,
+        "has_U": 0,
+        "has_C": 0,
+        "has_B": 0,
     }
 
-    payload = {
-        "model": MODEL,
-        "messages": [{"role": "user", "content": prompt}],
-        "response_format": {"type": "json_object"},
-        "temperature": 0,
-        "seed": 42,
-    }
-
-    t0 = time.monotonic()
-    try:
-        response = requests.post(
-            OPENROUTER_API_URL,
-            headers=headers,
-            json=payload,
-            timeout=timeout,
-        )
-    except requests.Timeout:
-        logger.error("OpenRouter request timed out after %ds", timeout)
-        return None
-    except requests.RequestException as e:
-        logger.error("OpenRouter request failed: %s", str(e))
-        return None
-
-    elapsed = time.monotonic() - t0
-    logger.debug("OpenRouter responded in %.2fs | status=%d", elapsed, response.status_code)
-
-    if response.status_code != 200:
-        logger.error("OpenRouter API error | status=%d", response.status_code)
-        return None
-
-    result = response.json()
-    content = result["choices"][0]["message"]["content"]
-
-    try:
-        parsed = json.loads(content)
-        return {
-            "customer_complaint": parsed.get("customer_complaint", "OBD Light ON"),
-            "dtc_codes": parsed.get("dtc_codes", []),
-            "dtc_text": parsed.get("dtc_text", ""),
-            "dtc_count": parsed.get("dtc_count", 0),
-            "has_P": parsed.get("has_P", 0),
-            "has_U": parsed.get("has_U", 0),
-            "has_C": parsed.get("has_C", 0),
-            "has_B": parsed.get("has_B", 0),
-        }
-    except json.JSONDecodeError:
-        logger.error("Failed to parse LLM response as JSON: %s", content)
-        return None
+    return _parse_json_response(content, defaults)

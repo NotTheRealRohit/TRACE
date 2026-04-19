@@ -108,7 +108,8 @@ uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `OPENROUTER_API_KEY` | Yes (for LLM features) | API key for OpenRouter LLM service |
+| `OPENAI_API_KEY` | Conditional | API key for OpenAI LLM service (gpt-4o-mini). Takes priority over OPENROUTER_API_KEY if both set. |
+| `OPENROUTER_API_KEY` | Conditional | API key for OpenRouter LLM service (fallback when OPENAI_API_KEY not set) |
 | `LOG_LEVEL` | No | Logging level (default: INFO) |
 
 **Note:** Create a `.env` file in `backend/` directory with your API keys. See `.env.example` for the template.
@@ -454,4 +455,4 @@ ClaimResponse JSON  (schema unchanged)
    - Fallback: `assemble_output_from_fields()` when LLM unavailable
    - Returns final ClaimResponse JSON
 
-**API Key:** Stored in `backend/.env` as `OPENROUTER_API_KEY`
+**API Key:** Stored in `backend/.env`. Priority: `OPENAI_API_KEY` (gpt-4o-mini) → `OPENROUTER_API_KEY` (fallback)
