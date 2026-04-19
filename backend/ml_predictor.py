@@ -689,6 +689,9 @@ def predict(fault_code: str, technician_notes: str, voltage) -> Optional[dict]:
             from llm_client import translate_to_ml_features
             category = llm_stage1["category"] if llm_stage1 else "other"
             features = translate_to_ml_features(notes, fc, category)
+            if features:
+                dtc_f = extract_dtc_features(fc)
+                features.update({k: v for k, v in dtc_f.items() if k.startswith("dtc_")})
         except Exception as e:
             logger.warning("[STAGE 3] LLM failed, using fallback: %s", e)
 
@@ -702,10 +705,11 @@ def predict(fault_code: str, technician_notes: str, voltage) -> Optional[dict]:
             "has_U": dtc_f["has_U"],
             "has_C": dtc_f["has_C"],
             "has_B": dtc_f["has_B"],
+            **dtc_f,
             "supplier": "Unknown",
             "mileage_km": 50000.0,
             "year": 2024,
-            "claim_age": 1,          # default: assume 1-year-old claim
+            "claim_age": 1,
         }
 
     ml_result = run_ml(features)
@@ -747,5 +751,5 @@ if __name__ == "__main__":
         ("C0045, P0987", "Brake warning light ON, vehicle shaking"),
     ]
     for fc, notes in tests:
-        r = predict(fc, notes)
+        r = predict(fc, notes, 14.2)
         print(f"  [{r['status']:25s}] FA: {r['failure_analysis'][:38]:38s} | {r['confidence']}%  [{r['decision_engine']}]")
