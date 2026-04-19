@@ -73,6 +73,7 @@ import pandas as pd
 from   difflib import get_close_matches
 from   scipy.sparse import hstack
 from   sklearn.ensemble import RandomForestClassifier
+from   xgboost import XGBClassifier
 from   sklearn.preprocessing import LabelEncoder
 from   sklearn.model_selection import train_test_split, cross_val_predict
 from   sklearn.metrics import accuracy_score
@@ -136,8 +137,26 @@ HIGH_VALUE_DTCS = [
 
 RULES = [
     {
+        "id": "over_voltage",
+        "match": lambda fc, notes, voltage: voltage is not None and voltage > 16.0,
+        "failure_analysis":  "EOS (Electrical OverStress) due to over-voltage",
+        "warranty_decision": "Customer Failure",
+        "status":            "Rejected",
+        "confidence":        93.0,
+        "reason":            "Voltage > 16.0V detected — vehicle charging system failure, not covered under warranty.",
+    },
+    {
+        "id": "low_voltage",
+        "match": lambda fc, notes, voltage: voltage is not None and voltage < 11.0,
+        "failure_analysis":  "Sensor short due to low voltage",
+        "warranty_decision": "Customer Failure",
+        "status":            "Rejected",
+        "confidence":        95.0,
+        "reason":            "Voltage < 11.0V detected — battery failure or severe undercharging, customer responsibility.",
+    },
+    {
         "id": "moisture",
-        "match": lambda fc, notes: any(k in notes.lower() for k in
+        "match": lambda fc, notes, voltage: any(k in notes.lower() for k in
                     ("water", "moisture", "wet", "flood", "rain", "humid", "corrosion", "corroded")),
         "failure_analysis":  "Sensor short due to moisture",
         "warranty_decision": "Customer Failure",
@@ -147,7 +166,7 @@ RULES = [
     },
     {
         "id": "physical_damage",
-        "match": lambda fc, notes: any(k in notes.lower() for k in
+        "match": lambda fc, notes, voltage: any(k in notes.lower() for k in
                     ("crack", "broken", "impact", "collision", "bent", "misuse", "dropped", "physical damage")),
         "failure_analysis":  "Connector damage",
         "warranty_decision": "Customer Failure",
@@ -157,7 +176,7 @@ RULES = [
     },
     {
         "id": "ntf",
-        "match": lambda fc, notes: any(k in notes.lower() for k in
+        "match": lambda fc, notes, voltage: any(k in notes.lower() for k in
                     ("no fault", "ntf", "no trouble", "no issue", "no defect", "intermittent", "cannot reproduce")),
         "failure_analysis":  "NTF",
         "warranty_decision": "According to Specification",
@@ -167,7 +186,7 @@ RULES = [
     },
     {
         "id": "u_code",
-        "match": lambda fc, notes: bool(re.search(r'\bU[0-9A-Fa-f]{4}\b', fc)),
+        "match": lambda fc, notes, voltage: bool(re.search(r'\bU[0-9A-Fa-f]{4}\b', fc)),
         "failure_analysis":  "controller failure due to supplier production failure",
         "warranty_decision": "Production Failure",
         "status":            "Approved",
@@ -176,7 +195,7 @@ RULES = [
     },
     {
         "id": "p_code_engine",
-        "match": lambda fc, notes: (
+        "match": lambda fc, notes, voltage: (
             bool(re.search(r'\bP0[0-9]{3}\b', fc.upper())) and
             any(k in notes.lower() for k in ("jerk", "pickup", "acceleration", "overheat", "fuel", "idle", "rough"))
         ),
@@ -188,7 +207,7 @@ RULES = [
     },
     {
         "id": "c_code",
-        "match": lambda fc, notes: bool(re.search(r'\bC[0-9A-Fa-f]{4}\b', fc)),
+        "match": lambda fc, notes, voltage: bool(re.search(r'\bC[0-9A-Fa-f]{4}\b', fc)),
         "failure_analysis":  "Connector damage",
         "warranty_decision": "Production Failure",
         "status":            "Approved",
@@ -197,7 +216,7 @@ RULES = [
     },
     {
         "id": "b_code",
-        "match": lambda fc, notes: bool(re.search(r'\bB[0-9A-Fa-f]{4}\b', fc)),
+        "match": lambda fc, notes, voltage: bool(re.search(r'\bB[0-9A-Fa-f]{4}\b', fc)),
         "failure_analysis":  "Connector damage",
         "warranty_decision": "Production Failure",
         "status":            "Approved",
@@ -312,6 +331,7 @@ def train_and_save():
     year_scaler    = StandardScaler()
     ohe_mileage      = OneHotEncoder(sparse_output=True, handle_unknown="ignore")
     claim_age_scaler = StandardScaler()
+    voltage_scaler   = StandardScaler()
 
     X_c_tr = ohe.fit_transform(df_tr[["Customer Complaint"]])
     X_d_tr = tfidf_d.fit_transform(dtc_tr["dtc_text"])
@@ -321,11 +341,12 @@ def train_and_save():
     X_y_tr = year_scaler.fit_transform(df_tr[["Year"]])
     X_mb_tr = ohe_mileage.fit_transform(df_tr[["mileage_bracket"]])
     X_ca_tr = claim_age_scaler.fit_transform(df_tr[["claim_age"]])
+    X_v_tr  = voltage_scaler.fit_transform(df_tr[["Voltage"]])
 
     from scipy.sparse import csr_matrix
     X_tr = hstack([X_c_tr, X_d_tr, csr_matrix(X_n_tr),
                    X_s_tr, csr_matrix(X_m_tr), csr_matrix(X_y_tr),
-                   X_mb_tr, csr_matrix(X_ca_tr)])
+                   X_mb_tr, csr_matrix(X_ca_tr), csr_matrix(X_v_tr)])
 
     # ── Step 3: transform() on the TEST slice only ────────────────────────────
     X_c_te = ohe.transform(df_te[["Customer Complaint"]])
@@ -336,21 +357,21 @@ def train_and_save():
     X_y_te = year_scaler.transform(df_te[["Year"]])
     X_mb_te = ohe_mileage.transform(df_te[["mileage_bracket"]])
     X_ca_te = claim_age_scaler.transform(df_te[["claim_age"]])
+    X_v_te  = voltage_scaler.transform(df_te[["Voltage"]])
 
     X_te = hstack([X_c_te, X_d_te, csr_matrix(X_n_te),
                    X_s_te, csr_matrix(X_m_te), csr_matrix(X_y_te),
-                   X_mb_te, csr_matrix(X_ca_te)])
+                   X_mb_te, csr_matrix(X_ca_te), csr_matrix(X_v_te)])
 
     logger.info("[INIT] Training Failure Analysis classifier...")
     logger.info("[INIT] Generating OOF FA probabilities for WD cascade (cv=5)...")
     fa_probs_tr = cross_val_predict(
-        RandomForestClassifier(n_estimators=200, random_state=42, n_jobs=-1),
+        XGBClassifier(n_estimators=300, max_depth=8, learning_rate=0.1, n_jobs=-1, random_state=42, eval_metric='mlogloss', verbosity=0),
         X_tr, yfa_tr,
         cv=5,
         method="predict_proba",
     )
-    # Train the final clf_fa on ALL of X_tr (OOF probs used only for clf_wd training)
-    clf_fa = RandomForestClassifier(n_estimators=200, random_state=42, n_jobs=-1)
+    clf_fa = XGBClassifier(n_estimators=300, max_depth=8, learning_rate=0.1, n_jobs=-1, random_state=42, eval_metric='mlogloss', verbosity=0)
     clf_fa.fit(X_tr, yfa_tr)
 
     fa_probs_te = clf_fa.predict_proba(X_te)
@@ -358,7 +379,7 @@ def train_and_save():
     X_wd_te = hstack([X_te, csr_matrix(fa_probs_te)])
 
     logger.info("[INIT] Training Warranty Decision classifier with FA cascade...")
-    clf_wd = RandomForestClassifier(n_estimators=200, class_weight="balanced", random_state=42, n_jobs=-1)
+    clf_wd = XGBClassifier(n_estimators=300, max_depth=8, learning_rate=0.1, n_jobs=-1, random_state=42, eval_metric='mlogloss', verbosity=0)
     clf_wd.fit(X_wd_tr, ywd_tr)
 
     fa_acc = accuracy_score(yfa_te, clf_fa.predict(X_te))
@@ -371,7 +392,8 @@ def train_and_save():
                   ohe_supplier=ohe_supplier, mileage_scaler=mileage_scaler,
                   year_scaler=year_scaler,
                   ohe_mileage=ohe_mileage,
-                  claim_age_scaler=claim_age_scaler)
+                  claim_age_scaler=claim_age_scaler,
+                  voltage_scaler=voltage_scaler)
     with open(MODEL_PATH, "wb") as f:
         pickle.dump(bundle, f)
     logger.info("[INIT] Models saved to %s", MODEL_PATH)
@@ -389,13 +411,14 @@ _bundle = None
 
 
 
-def run_rules(fault_code: str, notes: str) -> Optional[dict]:
+def run_rules(fault_code: str, notes: str, voltage: float = None) -> Optional[dict]:
     """
     Run the rule engine against the claim inputs.
 
     Args:
         fault_code: DTC code(s)
         notes: Technician's free-text notes
+        voltage: Measured voltage (optional)
 
     Returns:
         dict with keys: rule_id, status, warranty_decision, rule_confidence, failure_analysis, reason, rule_fired
@@ -403,7 +426,7 @@ def run_rules(fault_code: str, notes: str) -> Optional[dict]:
     """
     for rule in RULES:
         try:
-            if rule["match"](fault_code, notes):
+            if rule["match"](fault_code, notes, voltage):
                 return {
                     "rule_id": rule["id"],
                     "status": rule["status"],
@@ -480,7 +503,12 @@ def run_ml(features: dict) -> Optional[dict]:
         pd.DataFrame([[_ca_val]], columns=["claim_age"])
     ))
 
-    X = hstack([X_c, X_d, _csr(X_n), X_s, X_m, X_y, X_mb, X_ca])
+    _v_val = float(features.get("voltage", 14.2))
+    X_v = _csr(_bundle["voltage_scaler"].transform(
+        pd.DataFrame([[_v_val]], columns=["Voltage"])
+    ))
+
+    X = hstack([X_c, X_d, _csr(X_n), X_s, X_m, X_y, X_mb, X_ca, X_v])
 
     # FIX 5 + FIX 1: single proba call for FA, cascade into WD
     fa_proba_row = _bundle["clf_fa"].predict_proba(X)[0]
@@ -677,7 +705,7 @@ def predict(fault_code: str, technician_notes: str, voltage) -> Optional[dict]:
         except Exception as e:
             logger.warning("[STAGE 1] LLM failed, using fallback: %s", e)
 
-    rule_result = run_rules(fc, notes)
+    rule_result = run_rules(fc, notes, voltage)
     if rule_result.get("rule_fired"):
         decision_logger.log_decision("Rule Engine", rule_result)
         logger.info("Rule fired: %s with confidence %.1f",
@@ -710,7 +738,12 @@ def predict(fault_code: str, technician_notes: str, voltage) -> Optional[dict]:
             "mileage_km": 50000.0,
             "year": 2024,
             "claim_age": 1,
+            "voltage": voltage if voltage is not None else 14.2,
         }
+
+    # Ensure voltage is in features even if LLM path was taken
+    if features is not None and "voltage" not in features:
+        features["voltage"] = voltage if voltage is not None else 14.2
 
     ml_result = run_ml(features)
     decision_logger.log_decision("ML Model", {

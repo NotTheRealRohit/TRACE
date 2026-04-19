@@ -547,7 +547,9 @@ class TestB5OutputSchema:
         assert r["matched_complaint"] in [
             "Engine jerking during acceleration", "Starting Problem",
             "High fuel consumption", "OBD Light ON", "Vehicle not starting",
-            "Low pickup", "Engine overheating", "Rough idling", "Brake warning light ON"
+            "Low pickup", "Engine overheating", "Rough idling", "Brake warning light ON",
+            "ABS warning light ON", "Battery warning light ON",
+            "Engine stalling", "Multiple warning lights ON", "Transmission jerking",
         ]
 
 
