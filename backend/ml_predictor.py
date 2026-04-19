@@ -318,6 +318,38 @@ def train_and_save():
     df_tr["claim_age"] = pd.to_datetime(df_tr["Date"]).dt.year - df_tr["Year"]
     df_te["claim_age"] = pd.to_datetime(df_te["Date"]).dt.year - df_te["Year"]
 
+    # 3. voltage_bracket — OHE captures non-linear voltage thresholds that
+    #    separate ASIC CJ327 CF vs PF (threshold ~15.4V), and track-burnt EOS (threshold >17V)
+    def voltage_bracket(v):
+        if v <= 11.0: return "very_low"
+        elif v <= 13.5: return "low"
+        elif v <= 14.5: return "normal"
+        elif v <= 15.4: return "moderate_high"
+        elif v <= 16.0: return "high"
+        elif v <= 17.0: return "very_high"
+        else: return "extreme"
+    df_tr["voltage_bracket"] = df_tr["Voltage"].apply(voltage_bracket)
+    df_te["voltage_bracket"] = df_te["Voltage"].apply(voltage_bracket)
+
+    # 4. dtc_count_bracket — DTC count is highly predictive (CF avg 2.3, PF avg 1.5)
+    def dtc_count_bracket(c):
+        if c == 0: return "none"
+        elif c == 1: return "single"
+        elif c <= 3: return "few"
+        else: return "many"
+    df_tr["dtc_count_bracket"] = dtc_tr["dtc_count"].apply(dtc_count_bracket)
+    df_te["dtc_count_bracket"] = dtc_te["dtc_count"].apply(dtc_count_bracket)
+
+    # 5. Interaction features — voltage × DTC prefix combinations
+    df_tr["volt_high_and_P"] = ((df_tr["Voltage"] > 15.4) & (dtc_tr["has_P"] == 1)).astype(int)
+    df_te["volt_high_and_P"] = ((df_te["Voltage"] > 15.4) & (dtc_te["has_P"] == 1)).astype(int)
+    df_tr["volt_low_and_U"] = ((df_tr["Voltage"] < 11.0) & (dtc_tr["has_U"] == 1)).astype(int)
+    df_te["volt_low_and_U"] = ((df_te["Voltage"] < 11.0) & (dtc_te["has_U"] == 1)).astype(int)
+    df_tr["volt_normal_and_C"] = ((df_tr["Voltage"] >= 11.0) & (df_tr["Voltage"] <= 14.5) & (dtc_tr["has_C"] == 1)).astype(int)
+    df_te["volt_normal_and_C"] = ((df_te["Voltage"] >= 11.0) & (df_te["Voltage"] <= 14.5) & (dtc_te["has_C"] == 1)).astype(int)
+    df_tr["has_multiple_prefixes"] = ((dtc_tr["has_P"] + dtc_tr["has_U"] + dtc_tr["has_C"] + dtc_tr["has_B"]) > 1).astype(int)
+    df_te["has_multiple_prefixes"] = ((dtc_te["has_P"] + dtc_te["has_U"] + dtc_te["has_C"] + dtc_te["has_B"]) > 1).astype(int)
+
     dtc_flag_cols = (
         ["dtc_count","has_P","has_U","has_C","has_B"] +
         [f"dtc_{d.lower()}" for d in HIGH_VALUE_DTCS]
@@ -332,6 +364,8 @@ def train_and_save():
     ohe_mileage      = OneHotEncoder(sparse_output=True, handle_unknown="ignore")
     claim_age_scaler = StandardScaler()
     voltage_scaler   = StandardScaler()
+    ohe_voltage_bracket = OneHotEncoder(sparse_output=True, handle_unknown="ignore")
+    ohe_dtc_count_bracket = OneHotEncoder(sparse_output=True, handle_unknown="ignore")
 
     X_c_tr = ohe.fit_transform(df_tr[["Customer Complaint"]])
     X_d_tr = tfidf_d.fit_transform(dtc_tr["dtc_text"])
@@ -342,11 +376,15 @@ def train_and_save():
     X_mb_tr = ohe_mileage.fit_transform(df_tr[["mileage_bracket"]])
     X_ca_tr = claim_age_scaler.fit_transform(df_tr[["claim_age"]])
     X_v_tr  = voltage_scaler.fit_transform(df_tr[["Voltage"]])
+    X_vb_tr = ohe_voltage_bracket.fit_transform(df_tr[["voltage_bracket"]])
+    X_dcb_tr = ohe_dtc_count_bracket.fit_transform(df_tr[["dtc_count_bracket"]])
+    X_int_tr = df_tr[["volt_high_and_P", "volt_low_and_U", "volt_normal_and_C", "has_multiple_prefixes"]].values
 
     from scipy.sparse import csr_matrix
     X_tr = hstack([X_c_tr, X_d_tr, csr_matrix(X_n_tr),
                    X_s_tr, csr_matrix(X_m_tr), csr_matrix(X_y_tr),
-                   X_mb_tr, csr_matrix(X_ca_tr), csr_matrix(X_v_tr)])
+                   X_mb_tr, csr_matrix(X_ca_tr), csr_matrix(X_v_tr),
+                   X_vb_tr, X_dcb_tr, csr_matrix(X_int_tr)])
 
     # ── Step 3: transform() on the TEST slice only ────────────────────────────
     X_c_te = ohe.transform(df_te[["Customer Complaint"]])
@@ -358,20 +396,31 @@ def train_and_save():
     X_mb_te = ohe_mileage.transform(df_te[["mileage_bracket"]])
     X_ca_te = claim_age_scaler.transform(df_te[["claim_age"]])
     X_v_te  = voltage_scaler.transform(df_te[["Voltage"]])
+    X_vb_te = ohe_voltage_bracket.transform(df_te[["voltage_bracket"]])
+    X_dcb_te = ohe_dtc_count_bracket.transform(df_te[["dtc_count_bracket"]])
+    X_int_te = df_te[["volt_high_and_P", "volt_low_and_U", "volt_normal_and_C", "has_multiple_prefixes"]].values
 
     X_te = hstack([X_c_te, X_d_te, csr_matrix(X_n_te),
                    X_s_te, csr_matrix(X_m_te), csr_matrix(X_y_te),
-                   X_mb_te, csr_matrix(X_ca_te), csr_matrix(X_v_te)])
+                   X_mb_te, csr_matrix(X_ca_te), csr_matrix(X_v_te),
+                   X_vb_te, X_dcb_te, csr_matrix(X_int_te)])
+
+    # Tuned XGBoost hyperparameters from optimization
+    _xgb_params = dict(
+        n_estimators=1000, max_depth=10, learning_rate=0.02,
+        min_child_weight=3, subsample=0.8, colsample_bytree=0.8,
+        reg_lambda=0.1, eval_metric='mlogloss', verbosity=0, random_state=42
+    )
 
     logger.info("[INIT] Training Failure Analysis classifier...")
     logger.info("[INIT] Generating OOF FA probabilities for WD cascade (cv=5)...")
     fa_probs_tr = cross_val_predict(
-        XGBClassifier(n_estimators=300, max_depth=8, learning_rate=0.1, n_jobs=-1, random_state=42, eval_metric='mlogloss', verbosity=0),
+        XGBClassifier(n_jobs=-1, **_xgb_params),
         X_tr, yfa_tr,
         cv=5,
         method="predict_proba",
     )
-    clf_fa = XGBClassifier(n_estimators=300, max_depth=8, learning_rate=0.1, n_jobs=-1, random_state=42, eval_metric='mlogloss', verbosity=0)
+    clf_fa = XGBClassifier(n_jobs=-1, **_xgb_params)
     clf_fa.fit(X_tr, yfa_tr)
 
     fa_probs_te = clf_fa.predict_proba(X_te)
@@ -379,7 +428,7 @@ def train_and_save():
     X_wd_te = hstack([X_te, csr_matrix(fa_probs_te)])
 
     logger.info("[INIT] Training Warranty Decision classifier with FA cascade...")
-    clf_wd = XGBClassifier(n_estimators=300, max_depth=8, learning_rate=0.1, n_jobs=-1, random_state=42, eval_metric='mlogloss', verbosity=0)
+    clf_wd = XGBClassifier(n_jobs=-1, **_xgb_params)
     clf_wd.fit(X_wd_tr, ywd_tr)
 
     fa_acc = accuracy_score(yfa_te, clf_fa.predict(X_te))
@@ -393,7 +442,9 @@ def train_and_save():
                   year_scaler=year_scaler,
                   ohe_mileage=ohe_mileage,
                   claim_age_scaler=claim_age_scaler,
-                  voltage_scaler=voltage_scaler)
+                  voltage_scaler=voltage_scaler,
+                  ohe_voltage_bracket=ohe_voltage_bracket,
+                  ohe_dtc_count_bracket=ohe_dtc_count_bracket)
     with open(MODEL_PATH, "wb") as f:
         pickle.dump(bundle, f)
     logger.info("[INIT] Models saved to %s", MODEL_PATH)
@@ -508,7 +559,42 @@ def run_ml(features: dict) -> Optional[dict]:
         pd.DataFrame([[_v_val]], columns=["Voltage"])
     ))
 
-    X = hstack([X_c, X_d, _csr(X_n), X_s, X_m, X_y, X_mb, X_ca, X_v])
+    # New features: voltage_bracket, dtc_count_bracket, and interactions
+    def voltage_bracket(v):
+        if v <= 11.0: return "very_low"
+        elif v <= 13.5: return "low"
+        elif v <= 14.5: return "normal"
+        elif v <= 15.4: return "moderate_high"
+        elif v <= 16.0: return "high"
+        elif v <= 17.0: return "very_high"
+        else: return "extreme"
+    _vb_val = voltage_bracket(_v_val)
+    X_vb = _bundle["ohe_voltage_bracket"].transform(
+        pd.DataFrame([[_vb_val]], columns=["voltage_bracket"])
+    )
+
+    _dc_val = int(features.get("dtc_count", 0))
+    def dtc_count_bracket(c):
+        if c == 0: return "none"
+        elif c == 1: return "single"
+        elif c <= 3: return "few"
+        else: return "many"
+    _dcb_val = dtc_count_bracket(_dc_val)
+    X_dcb = _bundle["ohe_dtc_count_bracket"].transform(
+        pd.DataFrame([[_dcb_val]], columns=["dtc_count_bracket"])
+    )
+
+    _has_P = int(features.get("has_P", 0))
+    _has_U = int(features.get("has_U", 0))
+    _has_C = int(features.get("has_C", 0))
+    _volt_high_and_P = int((_v_val > 15.4) and _has_P)
+    _volt_low_and_U = int((_v_val < 11.0) and _has_U)
+    _volt_normal_and_C = int((11.0 <= _v_val <= 14.5) and _has_C)
+    _has_multi = int((_has_P + _has_U + _has_C + int(features.get("has_B", 0))) > 1)
+    X_int = _csr([[_volt_high_and_P, _volt_low_and_U, _volt_normal_and_C, _has_multi]])
+
+    X = hstack([X_c, X_d, _csr(X_n), X_s, X_m, X_y, X_mb, X_ca, X_v,
+                X_vb, X_dcb, X_int])
 
     # FIX 5 + FIX 1: single proba call for FA, cascade into WD
     fa_proba_row = _bundle["clf_fa"].predict_proba(X)[0]
