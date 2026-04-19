@@ -631,6 +631,35 @@ ML_WEIGHT_AGREE = 0.3
 RULE_WEIGHT_DISAGREE = 0.55
 ML_WEIGHT_DISAGREE = 0.35
 
+LLM_CATEGORY_TO_WARRANTY = {
+    "moisture_damage": "Customer Failure",
+    "physical_damage": "Customer Failure",
+    "ntf": "According to Specification",
+    "electrical_issue": "Production Failure",
+    "engine_symptom": "Production Failure",
+    "communication_fault": "Production Failure",
+    "other": None,
+}
+
+LLM_WEIGHT = 0.15
+RULE_WEIGHT_AGREE_LLM = 0.595
+ML_WEIGHT_AGREE_LLM = 0.255
+RULE_WEIGHT_DISAGREE_LLM = 0.4675
+ML_WEIGHT_DISAGREE_LLM = 0.2975
+
+LLM_LOW_CONFIDENCE_THRESHOLD = 0.3
+LLM_LOW_CONFIDENCE_PENALTY = 0.7
+LLM_CONFIDENCE_FOR_TAG = 0.5
+
+
+def _llm_agrees_with_decision(llm_stage1: Optional[dict], warranty_decision: str) -> Optional[bool]:
+    if llm_stage1 is None:
+        return None
+    llm_wd = LLM_CATEGORY_TO_WARRANTY.get(llm_stage1.get("category"))
+    if llm_wd is None:
+        return None
+    return llm_wd == warranty_decision
+
 
 def combine_scores(
     rule_result,
@@ -668,22 +697,50 @@ def combine_scores(
 
     ml_conf = ml_result.get("ml_confidence", 50.0)
 
-    if rule_fired and agreement:
-        combined_confidence = (
-            RULE_WEIGHT_AGREE * rule_conf
-            + ML_WEIGHT_AGREE * ml_conf
-            + AGREEMENT_BONUS
-        )
-    elif rule_fired and not agreement:
-        combined_confidence = (
-            RULE_WEIGHT_DISAGREE * rule_conf
-            + ML_WEIGHT_DISAGREE * ml_conf
-        )
-    else:
-        combined_confidence = ml_conf
+    llm_conf = llm_stage1.get("confidence", 0.5) if llm_stage1 else 0.5
+    llm_agrees_rule = _llm_agrees_with_decision(llm_stage1, rule_result.get("warranty_decision", "")) if rule_fired else None
+    llm_agrees_ml = _llm_agrees_with_decision(llm_stage1, ml_result.get("ml_warranty_decision", ""))
 
-    if llm_stage1 is not None and llm_stage1.get("category") == "other" and not rule_fired:
-        combined_confidence *= WEAK_INPUT_PENALTY
+    if rule_fired and agreement:
+        llm_scaled = llm_conf * 100
+        if llm_agrees_rule is True and llm_agrees_ml is True:
+            combined_confidence = (
+                RULE_WEIGHT_AGREE_LLM * rule_conf
+                + ML_WEIGHT_AGREE_LLM * ml_conf
+                + LLM_WEIGHT * llm_scaled
+                + AGREEMENT_BONUS
+            )
+        else:
+            combined_confidence = (
+                RULE_WEIGHT_AGREE * rule_conf
+                + ML_WEIGHT_AGREE * ml_conf
+                + 2.0
+            )
+    elif rule_fired and not agreement:
+        llm_scaled = llm_conf * 100
+        if llm_agrees_rule is True:
+            combined_confidence = (
+                RULE_WEIGHT_DISAGREE_LLM * rule_conf
+                + ML_WEIGHT_DISAGREE_LLM * ml_conf
+                + LLM_WEIGHT * llm_scaled
+            )
+        elif llm_agrees_ml is True:
+            combined_confidence = (
+                RULE_WEIGHT_DISAGREE_LLM * rule_conf
+                + ML_WEIGHT_DISAGREE_LLM * ml_conf
+                + LLM_WEIGHT * llm_scaled
+            )
+        else:
+            combined_confidence = (
+                RULE_WEIGHT_DISAGREE * rule_conf
+                + ML_WEIGHT_DISAGREE * ml_conf
+            )
+    else:
+        llm_scaled = llm_conf * 100
+        combined_confidence = (1 - LLM_WEIGHT) * ml_conf + LLM_WEIGHT * llm_scaled
+
+    if not rule_fired and llm_conf < LLM_LOW_CONFIDENCE_THRESHOLD:
+        combined_confidence *= LLM_LOW_CONFIDENCE_PENALTY
 
     combined_confidence = round(min(98.0, max(0.0, combined_confidence)), 1)
 
@@ -720,12 +777,22 @@ def combine_scores(
     else:
         warranty_decision = ml_result.get("ml_warranty_decision", "")
 
-    if llm_stage1 is not None and rule_fired:
+    llm_has_signal = llm_stage1 is not None and llm_stage1.get("confidence", 0) >= LLM_CONFIDENCE_FOR_TAG
+
+    if rule_fired and llm_has_signal:
         decision_engine = "LLM+Rule+ML"
     elif rule_fired:
         decision_engine = "Rule+ML"
     else:
-        decision_engine = "ML"
+        decision_engine = "LLM+ML" if llm_has_signal else "ML"
+
+    logger.info(
+        "LLM agreement | category=%s llm_conf=%.2f agrees_rule=%s agrees_ml=%s",
+        llm_stage1.get("category") if llm_stage1 else "N/A",
+        llm_conf,
+        llm_agrees_rule,
+        llm_agrees_ml,
+    )
 
     return {
         "status": status,
