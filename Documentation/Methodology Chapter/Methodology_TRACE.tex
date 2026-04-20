@@ -31,6 +31,7 @@
 
 % ── Code Listings ─────────────────────────────────────────────
 \usepackage{listings}
+\usepackage{textcomp}
 \lstset{
   basicstyle=\ttfamily\small,
   breaklines=true,
@@ -39,6 +40,24 @@
   keywordstyle=\color{blue},
   commentstyle=\color{green!50!black},
   stringstyle=\color{red!70!black},
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+  stepnumber=1,
+  tabsize=4,
+  showstringspaces=false,
+  language=Python,
+}
+\lstdefinestyle{Python}{
+  morekeywords={self,cls,None,True,False},
+  emph={self,cls},
+  emphstyle=\color{violet},
+}
+\lstdefinestyle{JavaScript}{
+  language=JavaScript,
+  morekeywords={async,await,const,let,var,function,return,if,else,for,try,catch},
+  keywordstyle=\color{blue},
+  stringstyle=\color{red!70!black},
+  commentstyle=\color{green!50!black},
 }
 
 % ── Colors ────────────────────────────────────────────────────
@@ -741,6 +760,22 @@ y_{\text{WD}} = \text{LabelEncoder}().\text{fit\_transform}(\text{df}[\text{``Wa
 
 \textbf{Critical:} The LabelEncoders are fit on the full dataset (lines 288--289) before the train/test split. This is safe because target encoding does not expose test-set feature statistics---the encoder merely maps class labels to integers, and all 6 FA classes and 3 WD classes are guaranteed to appear in both training and test partitions given the dataset size (100{,}000 rows).
 
+The null handling code is implemented at \texttt{ml\_predictor.py:281--284}:
+
+\begin{lstlisting}[language=Python]
+df["DTC"]                = df["DTC"].fillna("").replace("none", "")
+df["Customer Complaint"] = df["Customer Complaint"].fillna("OBD Light ON")
+df["Failure Analysis"]   = df["Failure Analysis"].fillna("NTF")
+df["Warranty Decision"]  = df["Warranty Decision"].fillna("According to Specification")
+\end{lstlisting}
+
+The LabelEncoder fitting is done at lines 288--289:
+
+\begin{lstlisting}[language=Python]
+le_fa = LabelEncoder(); y_fa = le_fa.fit_transform(df["Failure Analysis"])
+le_wd = LabelEncoder(); y_wd = le_wd.fit_transform(df["Warranty Decision"])
+\end{lstlisting}
+
 DTC features are extracted at line~291 via
 \texttt{dtc\_feats = pd.DataFrame(}\linebreak
 \texttt{list(df["DTC"].apply(extract\_dtc\_features)))}.
@@ -780,6 +815,14 @@ The split produces 8 objects simultaneously to maintain alignment across all der
 where $\text{df}_{\text{tr}}, \text{df}_{\text{te}}$ are the raw DataFrames, $\text{dtc}_{\text{tr}}, \text{dtc}_{\text{te}}$ are the DTC feature DataFrames, and the remaining four arrays are the label vectors for the two classification tasks.
 
 \textbf{Critical:} The split occurs at \texttt{ml\_predictor.py:297--299}. The comment at lines 293--296 explicitly documents the rationale: ``Splitting df before any fit\_transform call ensures that no test-set statistics (vocabulary, IDF weights, mean, std) can leak into the transformers that will later be used for inference.'' This addresses FIX~1 from the evaluation script, which identified that the original code fitted transformers on the full dataset before splitting. The split uses \texttt{random\_state=42} for reproducibility, ensuring that the same 80{,}000/20{,}000 partition is produced across all training runs.
+
+The 8-object split is implemented at lines 297--299:
+
+\begin{lstlisting}[language=Python]
+df_tr, df_te, dtc_tr, dtc_te, yfa_tr, yfa_te, ywd_tr, ywd_te = train_test_split(
+    df, dtc_feats, y_fa, y_wd, test_size=0.2, random_state=42
+)
+\end{lstlisting}
 
 \begin{figure}[H]
     \centering
@@ -879,6 +922,42 @@ has\_multiple\_prefixes & Binary & $>$1 prefix & Multi-system failure indicator 
     \caption{Derived feature engineering showing the transformation from raw columns to binned and interaction features.}
     \label{fig:derived-features}
 \end{figure}
+
+The voltage bracket function is defined at lines 323--330:
+
+\begin{lstlisting}[language=Python]
+def voltage_bracket(v):
+    if v <= 11.0: return "very_low"
+    elif v <= 13.5: return "low"
+    elif v <= 14.5: return "normal"
+    elif v <= 15.4: return "moderate_high"
+    elif v <= 16.0: return "high"
+    elif v <= 17.0: return "very_high"
+    else: return "extreme"
+\end{lstlisting}
+
+The DTC count bracket function is defined at lines 335--341:
+
+\begin{lstlisting}[language=Python]
+def dtc_count_bracket(c):
+    if c == 0: return "none"
+    elif c == 1: return "single"
+    elif c <= 3: return "few"
+    else: return "many"
+\end{lstlisting}
+
+The interaction features are computed at lines 344--351:
+
+\begin{lstlisting}[language=Python]
+df_tr["volt_high_and_P"] = ((df_tr["Voltage"] > 15.4) & (dtc_tr["has_P"] == 1)).astype(int)
+df_te["volt_high_and_P"] = ((df_te["Voltage"] > 15.4) & (dtc_te["has_P"] == 1)).astype(int)
+df_tr["volt_low_and_U"] = ((df_tr["Voltage"] < 11.0) & (dtc_tr["has_U"] == 1)).astype(int)
+df_te["volt_low_and_U"] = ((df_te["Voltage"] < 11.0) & (dtc_te["has_U"] == 1)).astype(int)
+df_tr["volt_normal_and_C"] = ((df_tr["Voltage"] >= 11.0) & (df_tr["Voltage"] <= 14.5) & (dtc_tr["has_C"] == 1)).astype(int)
+df_te["volt_normal_and_C"] = ((df_te["Voltage"] >= 11.0) & (df_te["Voltage"] <= 14.5) & (dtc_te["has_C"] == 1)).astype(int)
+df_tr["has_multiple_prefixes"] = ((dtc_tr["has_P"] + dtc_tr["has_U"] + dtc_tr["has_C"] + dtc_tr["has_B"]) > 1).astype(int)
+df_te["has_multiple_prefixes"] = ((dtc_te["has_P"] + dtc_te["has_U"] + dtc_te["has_C"] + dtc_te["has_B"]) > 1).astype(int)
+\end{lstlisting}
 
 \textbf{Used in:} Section~\ref{sec:transformer-fitting} (transformer input), Section~\ref{sec:stage4-xgboost-cascade} (inference feature construction).
 
@@ -1001,6 +1080,26 @@ Sensor (O2/temp) & P0038--P0343                  & 30+ \\
     \label{fig:dtc-feature-extraction}
 \end{figure}
 
+The complete \texttt{extract\_dtc\_features()} function is implemented at \texttt{ml\_predictor.py:229--243}:
+
+\begin{lstlisting}[language=Python]
+def extract_dtc_features(dtc_str: str) -> Optional[dict]:
+    s = str(dtc_str).strip().upper() if dtc_str else ""
+    if s in ("", "NA", "NAN", "NONE"):
+        return {"dtc_count":0,"has_P":0,"has_U":0,"has_C":0,"has_B":0,"dtc_text":"none",
+                **{f"dtc_{d.lower()}": 0 for d in HIGH_VALUE_DTCS}}
+    codes = [c.strip() for c in s.split(",") if c.strip()]
+    return {
+        "dtc_count": len(codes),
+        "has_P": int(any(c.startswith("P") for c in codes)),
+        "has_U": int(any(c.startswith("U") for c in codes)),
+        "has_C": int(any(c.startswith("C") for c in codes)),
+        "has_B": int(any(c.startswith("B") for c in codes)),
+        "dtc_text": " ".join(codes),
+        **{f"dtc_{d.lower()}": int(d in codes) for d in HIGH_VALUE_DTCS},
+    }
+\end{lstlisting}
+
 \textbf{Used in:} Section~\ref{sec:stage3-feature-translation} (inference DTC extraction), Section~\ref{sec:dtc-code-architecture} (DTC pool definitions).
 
 \subsection{Complaint Matching}
@@ -1058,6 +1157,40 @@ The default complaint of ``OBD Light ON'' is used when the notes are empty or no
     \caption{Complaint matching flow showing the keyword-first, fuzzy-fallback strategy with default.}
     \label{fig:complaint-matching}
 \end{figure}
+
+The complete \texttt{match\_complaint()} function is implemented at \texttt{ml\_predictor.py:246--274}:
+
+\begin{lstlisting}[language=Python]
+def match_complaint(user_text: str) -> str:
+    if not user_text:
+        return "OBD Light ON"
+    ul = user_text.lower()
+    kmap = {
+        "jerk": "Engine jerking during acceleration",
+        "accel": "Engine jerking during acceleration",
+        "not start": "Vehicle not starting",
+        "won't start": "Vehicle not starting",
+        "start": "Starting Problem",
+        "fuel": "High fuel consumption",
+        "obd": "OBD Light ON",
+        "pickup": "Low pickup",
+        "overheat": "Engine overheating",
+        "idle": "Rough idling",
+        "rough": "Rough idling",
+        "brake": "Brake warning light ON",
+        "warning": "OBD Light ON",
+        "abs": "ABS warning light ON",
+        "battery": "Battery warning light ON",
+        "stall": "Engine stalling",
+        "multiple": "Multiple warning lights ON",
+        "transmission": "Transmission jerking",
+    }
+    for kw, complaint in kmap.items():
+        if kw in ul:
+            return complaint
+    matches = get_close_matches(user_text, KNOWN_COMPLAINTS, n=1, cutoff=0.25)
+    return matches[0] if matches else "OBD Light ON"
+\end{lstlisting}
 
 \textbf{Used in:} Section~\ref{sec:stage3-feature-translation} (fallback feature construction).
 
@@ -1130,6 +1263,16 @@ n\_jobs            & $-1$ & Parallel tree construction using all CPU cores \\
     \caption{XGBoost architecture showing sequential tree building with learning rate scaling and subsampling.}
     \label{fig:xgboost-architecture}
 \end{figure}
+
+The XGBoost hyperparameters are defined at \texttt{ml\_predictor.py:409--413}:
+
+\begin{lstlisting}[language=Python]
+_xgb_params = dict(
+    n_estimators=1000, max_depth=10, learning_rate=0.02,
+    min_child_weight=3, subsample=0.8, colsample_bytree=0.8,
+    reg_lambda=0.1, eval_metric='mlogloss', verbosity=0, random_state=42
+)
+\end{lstlisting}
 
 \textbf{Used in:} Section~\ref{sec:cascade-architecture} (cascade uses two XGBoost classifiers), Section~\ref{sec:stage4-xgboost-cascade} (inference execution).
 
@@ -1249,6 +1392,39 @@ Rule confidences were recalibrated for v9's noisy patterns. The voltage and keyw
     \caption{Rule engine flow showing sequential evaluation of 9 rules with first-match-wins priority logic.}
     \label{fig:rule-engine-flow}
 \end{figure}
+
+The complete \texttt{run\_rules()} function is implemented at \texttt{ml\_predictor.py:465--492}:
+
+\begin{lstlisting}[language=Python]
+def run_rules(fault_code: str, notes: str, voltage: float = None) -> Optional[dict]:
+    """
+    Run the rule engine against the claim inputs.
+
+    Args:
+        fault_code: DTC code(s)
+        notes: Technician's free-text notes
+        voltage: Measured voltage (optional)
+
+    Returns:
+        dict with keys: rule_id, status, warranty_decision, rule_confidence, failure_analysis, reason, rule_fired
+        None if no rule matches
+    """
+    for rule in RULES:
+        try:
+            if rule["match"](fault_code, notes, voltage):
+                return {
+                    "rule_id": rule["id"],
+                    "status": rule["status"],
+                    "warranty_decision": rule["warranty_decision"],
+                    "rule_confidence": rule["confidence"],
+                    "failure_analysis": rule["failure_analysis"],
+                    "reason": rule["reason"],
+                    "rule_fired": True,
+                }
+        except Exception:
+            continue
+    return {"rule_fired": False}
+\end{lstlisting}
 
 \textbf{Used in:} Section~\ref{sec:stage2-rule-engine} (runtime execution), Section~\ref{sec:score-combination-logic} (rule confidence in combination).
 
@@ -1395,6 +1571,36 @@ Section~\ref{sec:llm-integration}.
     \label{fig:llm-categorisation}
 \end{figure}
 
+The provider selection logic is implemented at \texttt{llm\_client.py:28--33}:
+
+\begin{lstlisting}[language=Python]
+def _get_provider() -> Optional[str]:
+    if os.getenv("OPENAI_API_KEY"):
+        return "openai"
+    if os.getenv("OPENROUTER_API_KEY"):
+        return "openrouter"
+    return None
+\end{lstlisting}
+
+The LLM dispatch function is implemented at \texttt{llm\_client.py:63--77}:
+
+\begin{lstlisting}[language=Python]
+def _call_llm(prompt: str, timeout: int = 30) -> Optional[str]:
+    provider = _get_provider()
+    if not provider:
+        logger.error("No LLM provider configured")
+        raise RuntimeError(
+            "No LLM provider configured. Set OPENAI_API_KEY or OPENROUTER_API_KEY"
+        )
+
+    t0 = time.monotonic()
+
+    if provider == "openai":
+        return _call_openai(prompt, timeout, t0)
+    else:
+        return _call_openrouter(prompt, timeout, t0)
+\end{lstlisting}
+
 \textbf{Used in:} Section~\ref{sec:stage1-llm-understanding} (runtime execution), Section~\ref{sec:score-combination-logic} (LLM agreement in combination).
 
 \subsection{Score Combination Logic}
@@ -1511,6 +1717,45 @@ The LLM agreement check is implemented via \texttt{\_llm\_agrees\_with\_decision
     \caption{Score combination decision tree showing all scenarios with weights, bonuses, and confidence threshold tiers.}
     \label{fig:score-combination}
 \end{figure}
+
+The core agreement logic from \texttt{combine\_scores()} is implemented at \texttt{ml\_predictor.py:704--737}:
+
+\begin{lstlisting}[language=Python]
+    if rule_fired and agreement:
+        llm_scaled = llm_conf * 100
+        if llm_agrees_rule is True and llm_agrees_ml is True:
+            combined_confidence = (
+                RULE_WEIGHT_AGREE_LLM * rule_conf
+                + ML_WEIGHT_AGREE_LLM * ml_conf
+                + LLM_WEIGHT * llm_scaled
+                + AGREEMENT_BONUS
+            )
+        else:
+            combined_confidence = (
+                RULE_WEIGHT_AGREE * rule_conf
+                + ML_WEIGHT_AGREE * ml_conf
+                + 2.0
+            )
+    elif rule_fired and not agreement:
+        llm_scaled = llm_conf * 100
+        if llm_agrees_rule is True:
+            combined_confidence = (
+                RULE_WEIGHT_DISAGREE_LLM * rule_conf
+                + ML_WEIGHT_DISAGREE_LLM * ml_conf
+                + LLM_WEIGHT * llm_scaled
+            )
+        elif llm_agrees_ml is True:
+            combined_confidence = (
+                RULE_WEIGHT_DISAGREE_LLM * rule_conf
+                + ML_WEIGHT_DISAGREE_LLM * ml_conf
+                + LLM_WEIGHT * llm_scaled
+            )
+        else:
+            combined_confidence = (
+                RULE_WEIGHT_DISAGREE * rule_conf
+                + ML_WEIGHT_DISAGREE * ml_conf
+            )
+\end{lstlisting}
 
 \textbf{Used in:} Section~\ref{sec:stage5-score-combination} (runtime execution), Section~\ref{sec:hybrid-decision-engine-design} (high-level overview).
 
@@ -2098,6 +2343,53 @@ The app is created at line 31: \texttt{app = FastAPI(title="TRACE Backend API", 
     \label{fig:fastapi-architecture}
 \end{figure}
 
+The Pydantic request/response schemas are defined at \texttt{main.py:89--101}:
+
+\begin{lstlisting}[language=Python]
+class ClaimRequest(BaseModel):
+    fault_code:         str
+    technician_notes:   str
+    voltage:            float
+
+class ClaimResponse(BaseModel):
+    status:             str
+    failure_analysis:   str
+    warranty_decision:  str
+    confidence:         float
+    reason:             str
+    matched_complaint:  str
+    decision_engine:    str
+\end{lstlisting}
+
+The \texttt{/analyze} endpoint is defined at \texttt{main.py:112--136}:
+
+\begin{lstlisting}[language=Python]
+@app.post("/analyze", response_model=ClaimResponse)
+def analyze_claim(claim: ClaimRequest):
+    """
+    Accepts warranty claim inputs from the TRACE frontend,
+    routes them through the ML predictor (hybrid rule + RandomForest),
+    and returns a structured warranty decision.
+    """
+    logger.info("REQUEST /analyze | fault_code=%s voltage=%s",
+                claim.fault_code, claim.voltage)
+    
+    try:
+        result = ml_predict(
+            fault_code        = claim.fault_code,
+            technician_notes  = claim.technician_notes,
+            voltage           = claim.voltage,
+        )
+        logger.info("RESPONSE /analyze | status=%s confidence=%.1f engine=%s",
+                    result["status"], result["confidence"], 
+                    result.get("decision_engine", "unknown"))
+        return ClaimResponse(**result)
+    except Exception as e:
+        logger.error("ERROR /analyze | %s: %s", type(e).__name__, str(e),
+                     exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Prediction error: {str(e)}")
+\end{lstlisting}
+
 \textbf{Used in:} Section~\ref{sec:hybrid-decision-engine-design} (serving via API), Section~\ref{sec:frontend-architecture} (frontend calls API).
 
 \subsection{Frontend Architecture}
@@ -2131,6 +2423,49 @@ The UI includes form inputs for fault code, technician notes, and voltage, with 
     \caption{Frontend architecture showing the single-page application with form inputs and result display.}
     \label{fig:frontend-architecture}
 \end{figure}
+
+The JavaScript \texttt{analyzeClaim()} function is implemented at \texttt{frontend/index.html:535--571}:
+
+\begin{lstlisting}[style=JavaScript]
+async function analyzeClaim() {
+    const fault_code       = document.getElementById("fault_code").value.trim();
+    const voltage          = parseFloat(document.getElementById("voltage").value);
+    const technician_notes = document.getElementById("technician_notes").value.trim();
+
+    if (!technician_notes && !fault_code) {
+      flashInput(); return;
+    }
+    if (isNaN(voltage)) {
+      document.getElementById("voltage").focus();
+      document.getElementById("voltage").style.borderColor = "var(--amber)";
+      setTimeout(() => document.getElementById("voltage").style.borderColor = "", 1500);
+      return;
+    }
+
+    setBusy(true);
+
+    try {
+      const resp = await fetch(API_URL, {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ fault_code, technician_notes, voltage }),
+      });
+
+      if (!resp.ok) {
+        const err = await resp.json();
+        throw new Error(err.detail || "API error");
+      }
+
+      const data = await resp.json();
+      renderResult(data);
+
+    } catch (e) {
+      renderError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+\end{lstlisting}
 
 \textbf{Used in:} Section~\ref{sec:fastapi-backend} (API contract).
 
@@ -2213,6 +2548,35 @@ The \texttt{DecisionLogger} class (\texttt{logging\_config.py:38--60}) provides 
     \caption{Logging architecture showing the hierarchical logger namespace and DecisionLogger wrapper.}
     \label{fig:logging-architecture}
 \end{figure}
+
+The \texttt{DecisionLogger} class is implemented at \texttt{logging\_config.py:38--60}:
+
+\begin{lstlisting}[language=Python]
+class DecisionLogger:
+    """Helper class for logging decisions with context."""
+
+    def __init__(self, logger: logging.Logger):
+        self.logger = logger
+
+    def log_stage(self, stage: int, stage_name: str, **kwargs) -> None:
+        """Log stage entry with parameters."""
+        params = " ".join(f"{k}={v}" for k, v in kwargs.items())
+        self.logger.info(f"[STAGE {stage}] {stage_name} | {params}")
+
+    def log_decision(self, decision_type: str, result: dict, **context) -> None:
+        """Log a decision with result values."""
+        self.logger.info(
+            f"Decision: {decision_type} | Result: {result} | Context: {context}"
+        )
+
+    def log_input(self, func_name: str, **inputs) -> None:
+        """Log function inputs."""
+        self.logger.debug(f"INPUT {func_name} | {inputs}")
+
+    def log_output(self, func_name: str, **outputs) -> None:
+        """Log function outputs."""
+        self.logger.debug(f"OUTPUT {func_name} | {outputs}")
+\end{lstlisting}
 
 \textbf{Used in:} Section~\ref{sec:six-stage-pipeline} (DecisionLogger at each stage), Section~\ref{sec:complete-prediction-flow} (input/output logging).
 
