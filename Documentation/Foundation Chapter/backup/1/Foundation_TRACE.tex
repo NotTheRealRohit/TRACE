@@ -1,0 +1,1183 @@
+\documentclass[10pt]{article}
+
+\pdfoutput=1
+\usepackage{NotesTeX,lipsum, mathtools}
+%\usepackage{showframe}
+\usepackage{pythontex}
+\usepackage{pythonhighlight}
+\usepackage{movie15}
+\usepackage{graphicx}
+\usepackage{epstopdf}
+
+\epstopdfDeclareGraphicsRule{.gif}{png}{.png}{convert gif:#1 png:\OutputFile}
+\AppendGraphicsExtensions{.gif}
+
+% \title{\textbf{
+% TRACE}\\[0.3em]
+% \textbf{T}echnical Warranty \textbf{R}ecommender for \textbf{A}nalysis of \textbf{C}ustomer \textbf{E}rrors
+% }
+
+% \author{
+% Bharath Kumar Sampath \and
+% Chetan Shivappa Shet \and
+% Rohit Saji \and
+% Gayathri Devi B \and
+% Manjushree E
+% }
+
+% \date{}
+
+% \begin{document}
+% \maketitle
+
+% \tableofcontents
+% \clearpage
+
+% %========================================================
+% % EVERYTHING BEFORE FOUNDATIONAL CHAPTER COMMENTED OUT
+% %========================================================
+% \begin{comment}
+
+% \begin{abstract}
+% Modern vehicles rely on multiple Engine Control Units (ECUs) that continuously generate Diagnostic Trouble Codes (DTCs), sensor logs, and operational signals. While this data is extensively available, Original Equipment Manufacturers (OEMs) still rely heavily on manual and reactive approaches for warranty diagnostics and failure analysis. This results in delayed root cause identification, incorrect part replacements, and inflated warranty costs.
+% This paper proposes TRACE, an AI-driven analytical framework that integrates ECU logs, DTC sequences, service records, and telematics data to enable intelligent failure detection, root cause clustering, and predictive diagnostics. TRACE combines natural language processing (NLP) for unstructured service notes, machine learning for anomaly detection and clustering, deep learning for failure prediction, and explainable AI (XAI) for decision transparency. The framework addresses challenges such as data heterogeneity, data maturation, and warranty fraud while providing early warning signals and actionable insights for warranty decision-making.
+% \end{abstract}
+
+% \chapter{Introduction}
+
+% Modern automotive systems rely heavily on Electronic Control Units (ECUs) to manage critical vehicle operations. With increasing vehicle complexity, automotive manufacturers and service centers receive a large number of warranty claims related to ECU failures. However, a significant portion of these claims are caused by customer-induced errors such as improper installation, voltage misuse, or environmental exposure rather than manufacturing defects.
+
+% Traditional warranty claim analysis is largely manual, time-consuming, and inconsistent, leading to increased warranty costs and delayed decision-making. Most existing systems rely only on structured data such as fault codes, ignoring valuable unstructured information like technician notes and customer complaints.
+
+% \section{Problem Statement}
+% OEMs lack an integrated analytical framework that can:
+% \begin{itemize}
+%     \item Correlate DTC sequences with ECU sensor behavior
+%     \item Extract diagnostic insights from unstructured service notes
+%     \item Detect anomalies prior to hard failures
+%     \item Predict high-risk ECU components early in the lifecycle
+%     \item Distinguish genuine failures from misuse or fraudulent claims
+% \end{itemize}
+
+% This research addresses the structural gap between warranty repair authorization and OEM by proposing an AI-driven framework for service operations.
+
+% \begin{figure}[H]
+%     \centering
+%     \includegraphics[width=0.6\linewidth]{Flow Diagram_TRACE.png}
+%     \caption{TRACE engine data flow for AI-assisted warranty adjudication}
+%     \label{fig:placeholder}
+% \end{figure}
+
+% \chapter{Literature Review}
+
+% % ... your full Literature Review content here ...
+
+% \end{comment}
+
+%========================================================
+% ONLY ACTIVE CHAPTER
+%========================================================
+\begin{document}
+
+\section{Foundational Concepts}
+
+This chapter establishes the theoretical and technical vocabulary required to understand the TRACE (Technical Resolution and Claims Evaluation) system. Each concept presented here is directly employed in the system implementation and is referenced explicitly in the subsequent chapters on System Design, Implementation, and Evaluation.
+
+TRACE is a hybrid intelligent pipeline that combines a deterministic rule engine, a cascaded pair of XGBoost classifiers, an optional Large Language Model (LLM) layer with dual-provider support (OpenAI and OpenRouter), and an OCR-based image scanning module. Together, these components analyse automotive ECU warranty claims consisting of a Diagnostic Trouble Code (DTC), technician's free-text notes, and a voltage reading, and produce a structured decision comprising a failure analysis category, a warranty decision, a confidence score, and a human-readable justification.
+
+\subsection{System Evolution}
+
+TRACE has evolved through several major architectural milestones, as documented in the project's git history:
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{|p{2.5cm}|p{10cm}|}
+\hline
+\textbf{Milestone} & \textbf{Description} \\ \hline
+Initial Commit & Basic ML predictor with RandomForest and rule engine \\ \hline
+LLM Integration & OpenRouter API added for technician note categorization with retry logic \\ \hline
+Cascade Architecture & Failure Analysis classifier output used as features for Warranty Decision classifier \\ \hline
+Logging Infrastructure & Centralized logging with DecisionLogger across all pipeline stages \\ \hline
+Dataset Upgrade v9 & Synthetic dataset expanded to 100{,}000 rows (2019--2025) with 93--96\% pattern correlation \\ \hline
+Voltage Rules Added & over\_voltage ($>$16V) and low\_voltage ($<$11V) rules added to rule engine (7 $\rightarrow$ 9 rules) \\ \hline
+EasyOCR Integration & Image scanning endpoint for extracting DTC codes and voltage from technician photos \\ \hline
+RandomForest $\rightarrow$ XGBoost & ML model replaced with XGBoost (1000 estimators) for superior accuracy on structured+text features \\ \hline
+Dual LLM Providers & OpenAI (gpt-4o-mini) added as primary provider with OpenRouter as fallback \\ \hline
+LLM Consistency & Temperature set to 0, seed=42, disambiguation rules added for deterministic outputs \\ \hline
+LLM Confidence Weight & LLM signal integrated into score combination with 15\% weight \\ \hline
+Feature Engineering & Added voltage\_bracket, dtc\_count\_bracket, and interaction features (volt\_high\_and\_P, etc.) \\ \hline
+\end{tabular}
+\end{table}
+
+The sections below describe the \textbf{current} system state. Historical implementations (e.g., RandomForest, 7-rule engine) are noted where relevant for comparison.
+
+\section{Machine Learning Overview}
+
+\subsection{Supervised Learning}
+
+Supervised learning is the branch of machine learning in which a model is trained on a labelled dataset that is, a dataset where each input example is paired with a known output value. The model learns a mapping function \(f\) from the input feature space \(X\) to the output label space \(Y\) such that, for an unseen input \(x\), the predicted output \(f(x)\) approximates the true label \(y\) with minimum error.
+
+TRACE uses supervised learning throughout. The training dataset is \texttt{synthetic\_warranty\_claims\_v9.csv}, containing 100{,}000 synthetic warranty claim records spanning 2019--2025. Each record carries both a Failure Analysis label and a Warranty Decision label, making it a supervised, multi-output classification problem. The dataset is synthetically generated with 93--96\% pattern correlation to mimic real-world noise --- patterns like ``moisture keywords $\rightarrow$ Customer Failure'' hold approximately 91--95\% of the time, not always.
+
+\textbf{Used in:} Section 4.2 (Dataset Construction), Section 5.1 (Model Training)
+
+\subsection{Multi-Class Classification}
+
+A classification task assigns a discrete class label to each input. When the number of possible classes is greater than two, the problem is called multi-class classification. Both classifiers in TRACE are multi-class:
+
+\begin{itemize}
+    \item \textbf{Failure Analysis classifier:} 6 output classes --- NTF, Sensor short due to moisture, Connector damage, EOS (Electrical OverStress), ASIC CJ327 failure due to EOS, Controller failure due to supplier production failure.
+    \item \textbf{Warranty Decision classifier:} 3 output classes --- Production Failure, Customer Failure, According to Specification.
+\end{itemize}
+
+\textbf{Historical note:} Earlier versions of TRACE used 9 FA classes. The v9 dataset consolidation reduced this to 6 well-defined categories for improved model accuracy and reduced confusion between similar failure modes.
+
+Each classifier returns a probability vector over all its classes, and the class with the highest probability is selected as the prediction. This probability vector also plays a structural role in the cascade architecture described in Section 3.8.3.
+
+\textbf{Used in:} Section 5.2 (Cascade Architecture)
+
+\section{Core Algorithms}
+
+\subsection{Decision Trees}
+
+A decision tree is a hierarchical model that partitions the input space through a sequence of binary questions (splits). Each internal node tests a single feature against a threshold; each leaf node holds a class label (for classification) or a numeric value (for regression). The tree is grown by recursively selecting the split that maximises an information-theoretic criterion.
+
+The two most common split criteria for classification are:
+
+\begin{equation}
+G(\text{node}) = 1 - \sum_k p_k^2
+\end{equation}
+
+\begin{equation}
+H(\text{node}) = - \sum_k p_k \log_2(p_k)
+\end{equation}
+
+where \(p_k\) is the proportion of class \(k\) examples at the node.
+
+Splits that minimise Gini impurity (or equivalently maximise information gain) are preferred. A node is declared a leaf when a stopping criterion is met: maximum depth reached, fewer than \texttt{min\_samples\_split} examples remain, or no split improves purity.
+
+Decision trees are interpretable and require no feature scaling, but they overfit readily on training data. Both ensemble methods described next --- Random Forest (Section 3.2) and XGBoost (Section 3.3) --- address this limitation, albeit through fundamentally different strategies: bagging versus boosting.
+
+\textbf{Used in:} Section 3.2 (Random Forest uses Decision Trees as base learners), Section 3.3 (XGBoost uses Decision Trees as base learners)
+
+\subsection{Random Forest}
+
+Random Forest is an ensemble method that reduces overfitting by training many decision trees independently and aggregating their predictions. Each tree is trained on a bootstrap sample of the training data, and at each split only a random subset of features is considered. The final prediction is determined by majority vote across all trees.
+
+\textbf{Historical Role in TRACE:} The original TRACE implementation used \texttt{RandomForestClassifier} (scikit-learn) with 200 estimators for both the Failure Analysis and Warranty Decision classifiers. This was the production model until commit \texttt{a518371}, when it was replaced by XGBoost (Section 3.3). The RandomForest implementation is archived in \texttt{ml\_predictor\_DecisionTree.py} for reference.
+
+\subsubsection{Bagging and Bootstrap Aggregation}
+
+Bagging (Bootstrap Aggregation) trains each tree on an independently drawn bootstrap sample of the original dataset. A bootstrap sample is formed by sampling \(n\) rows from the training set with replacement, where \(n\) is the original dataset size. On average, approximately 63.2\% of unique rows appear in any given bootstrap sample; the remaining 36.8\% are ``out-of-bag'' (OOB) and can be used for internal validation without a separate validation set.
+
+For classification, the final prediction is determined by a majority vote across all trees:
+
+\begin{equation}
+\hat{y} = \arg\max_k \sum_{t=1}^{T} I(\hat{y}_t = k)
+\end{equation}
+
+where \(T\) is the number of trees, \(\hat{y}_t\) is the prediction of tree \(t\), and \(I(\cdot)\) is the indicator function.
+
+Aggregating over many trees that were trained on different bootstrap samples reduces variance without significantly increasing bias --- the key trade-off that makes Random Forest a robust general-purpose classifier.
+
+\subsubsection{Random Feature Subsampling}
+
+At each node split during tree construction, only a random subset of \(m\) features is considered as candidates for the best split. This decorrelates the trees: even if one feature is highly predictive, it will not dominate every tree. The standard recommendation for classification is:
+
+\begin{equation}
+m = \sqrt{p}
+\end{equation}
+
+where \(p\) is the total number of features.
+
+In \texttt{scikit-learn}, this corresponds to \texttt{max\_features="sqrt"}, which is the default. Feature subsampling ensures that different trees specialise in different parts of the feature space, increasing diversity and reducing ensemble variance.
+
+\subsubsection{Hyperparameters (Historical TRACE Configuration)}
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{|p{4cm}|p{9cm}|}
+\hline
+\textbf{Hyperparameter} & \textbf{Value / Role in TRACE (Retired)} \\ \hline
+\texttt{n\_estimators} & 200 --- number of trees in each forest. Higher values reduce variance but increase training time. \\ \hline
+\texttt{random\_state} & 42 --- seed for reproducibility of bootstrap samples and feature selection. \\ \hline
+\texttt{n\_jobs} & -1 --- all available CPU cores used in parallel for tree construction. \\ \hline
+\texttt{class\_weight} & \texttt{"balanced"} on \texttt{clf\_wd} --- reweights classes inversely proportional to frequency; compensates for imbalanced warranty decision labels. \\ \hline
+\texttt{max\_depth} & None (default) --- trees grow until leaves are pure or \texttt{min\_samples\_split} is reached. \\ \hline
+\end{tabular}
+\end{table}
+
+\textbf{Used in:} Section 3.3 (XGBoost superseded RandomForest)
+
+\subsection{XGBoost}
+
+TRACE currently uses XGBoost (\texttt{XGBClassifier}) for both the Failure Analysis and Warranty Decision classifiers, replacing the original RandomForest configuration described in Section 3.2. This section introduces the gradient boosting framework, explains the motivation for the migration, and documents the tuned hyperparameters used in production.
+
+\subsubsection{Gradient Boosting}
+
+Gradient boosting is an ensemble method that builds trees \emph{sequentially}: each new tree is trained to correct the residual errors of the combined ensemble so far. Formally, let \(F_t(x)\) be the ensemble prediction after \(t\) trees. The \(t+1\)-th tree \(h_{t+1}(x)\) is fitted to the negative gradient of the loss function evaluated at \(F_t(x)\):
+
+\begin{equation}
+h_{t+1}(x) = \arg\min_{h} \sum_{i=1}^{n} L\left(y_i, F_t(x_i) + h(x_i)\right)
+\end{equation}
+
+where \(L\) is the differentiable loss function (e.g., logistic loss for classification). The ensemble is updated by:
+
+\begin{equation}
+F_{t+1}(x) = F_t(x) + \eta \cdot h_{t+1}(x)
+\end{equation}
+
+where \(\eta\) is the learning rate (also called shrinkage), a small positive constant that controls the contribution of each tree. A low learning rate (e.g., 0.02) requires more trees but typically yields better generalisation.
+
+The key distinction from Random Forest (Section 3.2) is that gradient boosting trees are \textbf{additive} (each tree corrects the ensemble's remaining error) rather than \textbf{independent} (each tree is trained on a bootstrap sample and votes). This makes boosting more prone to overfitting if unregularised, but also more powerful when properly tuned.
+
+\subsubsection{Why XGBoost Replaced RandomForest}
+
+The migration from RandomForest to XGBoost was motivated by three empirical findings documented in \texttt{docs/xgboost-implementation-plan.md} and \texttt{docs/xgboost-tuning-results.md}:
+
+\begin{enumerate}
+    \item \textbf{Superior accuracy on structured+text features.} XGBoost handles the mix of sparse TF-IDF features and dense one-hot encoded features more effectively than RandomForest. On the TRACE dataset (100{,}000 synthetic claims with ~90 engineered features), XGBoost achieved 89.0\% WD accuracy compared to RandomForest's 86.4\%.
+
+    \item \textbf{Better-calibrated probabilities.} The cascade architecture (Section 3.4) feeds FA classifier probabilities as features to the WD classifier. XGBoost produces smoother, better-calibrated probability distributions than RandomForest, which tends to produce overconfident (near-0/1) probabilities that degrade cascade performance.
+
+    \item \textbf{Built-in regularisation.} XGBoost's L1 and L2 regularisation terms (\texttt{reg\_alpha} and \texttt{reg\_lambda}) directly penalise complex trees, reducing overfitting on the synthetic dataset without requiring separate pruning or early stopping. In TRACE, \texttt{reg\_lambda=0.1} is applied to all trees.
+\end{enumerate}
+
+The migration was carried out in commit \texttt{a518371} (``Replace RandomForest with XGBoost and add voltage feature to ML model''), followed by hyperparameter tuning in commit \texttt{98b61ae}. The RandomForest implementation is archived in \texttt{ml\_predictor\_DecisionTree.py}.
+
+\subsubsection{Hyperparameters in TRACE}
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{|p{4cm}|p{9cm}|}
+\hline
+\textbf{Hyperparameter} & \textbf{Value / Role in TRACE} \\ \hline
+\texttt{n\_estimators} & 1000 --- number of boosting rounds. Higher values enable convergence with low learning rate. \\ \hline
+\texttt{max\_depth} & 10 --- deep enough to capture complex feature interactions without excessive overfitting. \\ \hline
+\texttt{learning\_rate} & 0.02 --- low learning rate for stable convergence with many trees. \\ \hline
+\texttt{min\_child\_weight} & 3 --- minimum sum of instance weight needed in a child; prevents overfitting on small leaf nodes. \\ \hline
+\texttt{subsample} & 0.8 --- row subsampling ratio; each tree sees 80\% of training rows, adding robustness. \\ \hline
+\texttt{colsample\_bytree} & 0.8 --- column subsampling ratio; each tree considers 80\% of features, reducing correlation. \\ \hline
+\texttt{reg\_lambda} & 0.1 --- L2 regularisation on leaf weights; prevents overfitting on synthetic data. \\ \hline
+\texttt{random\_state} & 42 --- seed for reproducibility. \\ \hline
+\texttt{n\_jobs} & -1 --- all available CPU cores used in parallel for tree construction. \\ \hline
+\texttt{eval\_metric} & \texttt{mlogloss} --- multi-class log loss for monitoring convergence. \\ \hline
+\end{tabular}
+\end{table}
+
+\textbf{Used in:} Section 5.2 (Model Training), Section 3.4 (Cascade Architecture)
+
+\subsubsection{Tuning Results and Accuracy Ceiling}
+
+Fifteen or more hyperparameter configurations were evaluated, varying tree count, depth, learning rate, subsample ratio, and regularisation. The best configuration (\texttt{n\_estimators=1000}, \texttt{max\_depth=10}, \texttt{learning\_rate=0.02}) achieved a WD accuracy ceiling of 89.0\%.
+
+Key findings from the tuning process:
+
+\begin{itemize}
+    \item \textbf{Voltage feature (+1.9\%):} Adding voltage as a scaled numeric feature and voltage-bracket OHE improved accuracy from 86.4\% to 88.3\%.
+    \item \textbf{XGBoost replacement (+0.5\%):} Switching from RandomForest to XGBoost improved accuracy from 88.3\% to 88.8\%.
+    \item \textbf{Hyperparameter tuning (+0.2\%):} Grid search over 15 configurations pushed accuracy to 89.0\%.
+    \item \textbf{Ceiling analysis:} Customer Failure recall (83\%) is the bottleneck. Approximately 1{,}227 Customer Failure samples are misclassified as Production Failure due to overlapping DTC patterns and statistically identical voltage distributions in the ASIC CJ327 failure category.
+    \item \textbf{What did not work:} Sample weighting (hurts overall accuracy), wider/deeper trees (overfits), increased TF-IDF dimensions (no gain), and voltage $\times$ DTC interaction features (minimal gain beyond the existing interactions).
+\end{itemize}
+
+\textbf{Used in:} Section 5.2 (Model Training), Section 5.5 (Results Discussion)
+
+\subsection{Cascade Classification Architecture}
+
+TRACE employs a cascade architecture in which the output of the first classifier --- the Failure Analysis (FA) classifier --- is used as additional input features to the second classifier --- the Warranty Decision (WD) classifier. Both classifiers are implemented as XGBoost (\texttt{XGBClassifier}) gradient-boosted ensembles. The motivation is that the warranty decision is causally dependent on the failure analysis: whether a part failure was caused by a production defect or by customer misuse directly determines whether the warranty claim is approved or rejected.
+
+The cascade is implemented as follows:
+
+\begin{enumerate}
+    \item The FA classifier (\texttt{clf\_fa}) produces a 6-dimensional probability vector over all 6 failure analysis classes for each example, via \texttt{predict\_proba()}.
+    \item This probability vector is horizontally concatenated onto the original feature matrix to form the augmented feature matrix \(X_{wd}\).
+    \item The WD classifier (\texttt{clf\_wd}) is trained on \(X_{wd}\), giving it explicit access to the FA model's belief distribution.
+\end{enumerate}
+
+\begin{align}
+X_{\text{base}} &= [X_{\text{complaint}} \mid X_{\text{dtc\_tfidf}} \mid X_{\text{dtc\_flags}} \mid {} \notag \\
+&\quad X_{\text{supplier}} \mid X_{\text{mileage}} \mid X_{\text{year}} \mid {} \notag \\
+&\quad X_{\text{mileage\_bracket}} \mid X_{\text{claim\_age}} \mid X_{\text{voltage}} \mid {} \notag \\
+&\quad X_{\text{voltage\_bracket}} \mid X_{\text{dtc\_count\_bracket}} \mid {} \notag \\
+&\quad X_{\text{interactions}}] \\
+\text{fa\_probs} &= \texttt{clf\_fa.predict\_proba}(X_{\text{base}}) \\
+X_{\text{wd}} &= [X_{\text{base}} \mid \text{fa\_probs}]
+\end{align}
+
+where \(X_{\text{voltage}}\) is the raw voltage value scaled by \texttt{StandardScaler}, \(X_{\text{voltage\_bracket}}\) is a 7-level one-hot encoding (very\_low through extreme), and \(X_{\text{interactions}}\) contains four binary cross-features: \texttt{volt\_high\_and\_P}, \texttt{volt\_low\_and\_U}, \texttt{volt\_normal\_and\_C}, and \texttt{has\_multiple\_prefixes}.
+
+\textbf{Critical implementation detail --- Out-of-Fold (OOF) probabilities:} Naively training \texttt{clf\_fa} on all of \(X_{tr}\) and then using its in-sample probabilities to train \texttt{clf\_wd} would introduce data leakage --- the FA model would ``know'' the training examples too well, producing overconfident probability vectors that would not generalise to unseen data. TRACE avoids this by using 5-fold cross-validation (\texttt{cross\_val\_predict} with \texttt{method="predict\_proba"}) to generate OOF FA probabilities for the training set, ensuring that the probabilities passed to \texttt{clf\_wd} during its training come from a held-out fold that \texttt{clf\_fa} was not trained on. After the OOF probabilities are obtained, the final \texttt{clf\_fa} is retrained on all of \(X_{tr}\) for inference, so that \texttt{clf\_fa.predict\_proba()} at prediction time uses the full training set.
+
+\textbf{ML confidence calculation:} The ML confidence is computed as the geometric mean of the top-class probabilities from both classifiers:
+
+\begin{equation}
+{ml\_confidence} = \mathrm{round}\!\left(\min\!\left(98.0,\; \max\!\left(0.0,\; \sqrt{\text{FA\_top\_prob} \times \text{WD\_top\_prob}} \times 100\right)\right),\; 1\right)
+\end{equation}
+
+where the result is clamped to $[0, 98]$ and rounded to one decimal place. The geometric mean is used rather than the arithmetic mean because it penalises cases where either classifier is uncertain: if either $\text{FA\_top\_prob}$ or $\text{WD\_top\_prob}$ is low, the product drops sharply, producing a low confidence that appropriately routes the claim to manual review.
+
+\textbf{XGBoost hyperparameters:} Both \texttt{clf\_fa} and \texttt{clf\_wd} are configured with identical tuned parameters: \texttt{n\_estimators=1000}, \texttt{max\_depth=10}, \texttt{learning\_rate=0.02}, \texttt{min\_child\_weight=3}, \texttt{subsample=0.8}, \texttt{colsample\_bytree=0.8}, \texttt{reg\_lambda=0.1}, \texttt{random\_state=42}. The low learning rate combined with many trees provides stable convergence, while \texttt{min\_child\_weight} and \texttt{reg\_lambda} prevent overfitting on the synthetic training data. The cascade architecture was originally implemented with RandomForest classifiers and was migrated to XGBoost in commit \texttt{a518371}; the tuned hyperparameters were finalised in commit \texttt{98b61ae}.
+
+\textbf{Used in:} Section 5.3 (OOF Cascade Training), Section 3.8.3 (Cross-Validation)
+
+\section{Rule-Based Systems}
+
+\subsection{What is a Rule Engine?}
+
+A rule-based system (rule engine) encodes domain knowledge as a set of explicit IF--THEN logical rules. Each rule specifies a condition (a predicate over input values) and a consequence (an action or output to produce when the condition is satisfied). Rule engines are deterministic: the same input always produces the same output, and the reasoning process is fully transparent and auditable.
+
+In the TRACE pipeline, the rule engine serves as the first line of classification for clear-cut cases. Rules encode automotive warranty expertise that would take an ML model many examples to learn and even then, the model's reasoning would be opaque. By handling high-confidence edge cases (such as moisture damage or No-Trouble-Found claims) with explicit rules before ML scoring, TRACE improves overall accuracy, reduces the ML model's burden, and produces reasoning strings that are directly interpretable by warranty analysts.
+
+\subsection{Priority-Based Rule Evaluation}
+
+TRACE implements a priority-ordered rule evaluation strategy. The nine rules are evaluated in a fixed sequence; the first rule whose condition evaluates to \texttt{True} fires, and its associated output is returned immediately --- no subsequent rules are evaluated. This is sometimes called a ``first-match'' or ``ordered'' rule set.
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{|p{2.2cm}|p{5.5cm}|p{3cm}|p{1.8cm}|}
+\hline
+\textbf{Rule ID} & \textbf{Trigger Condition} & \textbf{Warranty Decision} & \textbf{Confidence} \\ \hline
+over\_voltage & voltage $>$ 16.0V & Customer Failure & 93.0\% \\ \hline
+low\_voltage & voltage $<$ 11.0V & Customer Failure & 95.0\% \\ \hline
+moisture & Keywords: water, moisture, wet, flood, rain, humid, corrosion, corroded & Customer Failure & 91.0\% \\ \hline
+physical\_damage & Keywords: crack, broken, impact, collision, bent, misuse, dropped, physical damage & Customer Failure & 88.5\% \\ \hline
+ntf & Keywords: no fault, ntf, no trouble, no issue, no defect, intermittent, cannot reproduce & According to Spec & 95.0\% \\ \hline
+u\_code & DTC regex: \texttt{\textbackslash bU[0-9A-Fa-f]\{4\}\textbackslash b} (CAN/LIN fault) & Production Failure & 57.0\% \\ \hline
+p\_code\_engine & P0-series DTC + engine symptom keywords (jerk, pickup, acceleration, overheat, fuel, idle, rough) & Production Failure & 80.5\% \\ \hline
+c\_code & DTC regex: \texttt{\textbackslash bC[0-9A-Fa-f]\{4\}\textbackslash b} (chassis fault) & Production Failure & 80.0\% \\ \hline
+b\_code & DTC regex: \texttt{\textbackslash bB[0-9A-Fa-f]\{4\}\textbackslash b} (body fault) & Production Failure & 80.0\% \\ \hline
+\end{tabular}
+\end{table}
+
+\textbf{Historical note:} The original rule engine had 7 rules (moisture through b\_code). Voltage rules (over\_voltage, low\_voltage) were added as priorities 1 and 2 because they are the most objective and reliable indicators --- voltage is a direct measurement, not a keyword match.
+
+\textbf{Design rationale:} Voltage rules come first because they are unconditional measurements. Keyword rules (moisture, physical damage, NTF) come next because they are high-confidence pattern matches. DTC prefix rules come last because they have lower confidence and are more ambiguous.
+
+The confidence values associated with rules are not computed from data; they are calibrated domain estimates reflecting the expected precision of each rule when applied to realistic automotive warranty claims.
+
+\subsection{Confidence Thresholding and Score Combination}
+
+TRACE does not output the rule confidence directly. Instead, the rule confidence, the ML model confidence, and optionally the LLM signal are blended through a weighted combination scheme to produce a single unified confidence score. The \texttt{combine\_scores()} function in \texttt{ml\_predictor.py} (lines 664--808) implements this logic across four distinct scenarios depending on whether a rule fired, whether the rule and ML agree, and whether an LLM signal is present.
+
+The combination logic is governed by a set of module-level constants defined at the top of \texttt{ml\_predictor.py}:
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{|p{5.5cm}|p{2cm}|p{5.5cm}|}
+\hline
+\textbf{Constant} & \textbf{Value} & \textbf{Purpose} \\ \hline
+\texttt{CONFIDENCE\_THRESHOLD\_FIRM} & 85.0 & Above this, decision is firm \\ \hline
+\texttt{CONFIDENCE\_THRESHOLD\_MANUAL} & 65.0 & Below this, requires manual review \\ \hline
+\texttt{AGREEMENT\_BONUS} & 5.0 & Added when rule and ML agree \\ \hline
+\texttt{DISAGREEMENT\_GAP\_THRESHOLD} & 20.0 & Rule/ML confidence gap tolerance \\ \hline
+\texttt{RULE\_WEIGHT\_AGREE} & 0.70 & Rule weight when rule and ML agree \\ \hline
+\texttt{ML\_WEIGHT\_AGREE} & 0.30 & ML weight when rule and ML agree \\ \hline
+\texttt{RULE\_WEIGHT\_DISAGREE} & 0.55 & Rule weight when rule and ML disagree \\ \hline
+\texttt{ML\_WEIGHT\_DISAGREE} & 0.35 & ML weight when rule and ML disagree \\ \hline
+\texttt{LLM\_WEIGHT} & 0.15 & LLM signal weight when present \\ \hline
+\texttt{LLM\_LOW\_CONFIDENCE\_THRESHOLD} & 0.3 & Below this, LLM signal is weak \\ \hline
+\texttt{LLM\_LOW\_CONFIDENCE\_PENALTY} & 0.7 & Multiplier for weak LLM input (no rule) \\ \hline
+\texttt{LLM\_CONFIDENCE\_FOR\_TAG} & 0.5 & Minimum LLM conf for engine tag \\ \hline
+\end{tabular}
+\end{table}
+
+When an LLM signal is present, the LLM's categorisation is mapped to a warranty decision via the \texttt{LLM\_CATEGORY\_TO\_WARRANTY} dictionary to determine agreement with the rule and ML outputs:
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{|p{4cm}|p{9cm}|}
+\hline
+\textbf{LLM Category} & \textbf{Mapped Warranty Decision} \\ \hline
+\texttt{moisture\_damage} & Customer Failure \\ \hline
+\texttt{physical\_damage} & Customer Failure \\ \hline
+\texttt{ntf} & According to Specification \\ \hline
+\texttt{electrical\_issue} & Production Failure \\ \hline
+\texttt{engine\_symptom} & Production Failure \\ \hline
+\texttt{communication\_fault} & Production Failure \\ \hline
+\texttt{other} & None (no agreement signal) \\ \hline
+\end{tabular}
+\end{table}
+
+The combined confidence is computed differently for each scenario. Let \(C_{\text{rule}}\) denote the rule confidence, \(C_{\text{ml}}\) the ML confidence, and \(C_{\text{llm}} = \text{llm\_confidence} \times 100\) the LLM confidence scaled to the 0--100 range:
+
+\begin{align}
+\text{Rule + ML agree, LLM agrees:}\quad &
+0.595 \times C_{\text{rule}} + 0.255 \times C_{\text{ml}} + 0.15 \times C_{\text{llm}} + 5.0 \\
+\text{Rule + ML agree, no LLM signal:}\quad &
+0.70 \times C_{\text{rule}} + 0.30 \times C_{\text{ml}} + 2.0 \\
+\text{Rule + ML disagree, LLM agrees with either:}\quad &
+0.4675 \times C_{\text{rule}} + 0.2975 \times C_{\text{ml}} + 0.15 \times C_{\text{llm}} \\
+\text{Rule + ML disagree, no LLM signal:}\quad &
+0.55 \times C_{\text{rule}} + 0.35 \times C_{\text{ml}} \\
+\text{No rule fired (LLM present):}\quad &
+0.85 \times C_{\text{ml}} + 0.15 \times C_{\text{llm}}
+\end{align}
+
+The resulting combined confidence is clamped to the range $[0.0, 98.0]$ and rounded to one decimal place. If no rule fired and the LLM confidence is below \texttt{LLM\_LOW\_CONFIDENCE\_THRESHOLD} (0.3), an additional penalty multiplier of \texttt{LLM\_LOW\_CONFIDENCE\_PENALTY} (0.7) is applied before clamping.
+
+The clamped confidence is then compared against two fixed thresholds to determine the final status:
+
+\begin{align}
+\texttt{CONFIDENCE\_THRESHOLD\_FIRM} &= 85.0 \\
+\texttt{CONFIDENCE\_THRESHOLD\_MANUAL} &= 65.0
+\end{align}
+
+The status assignment follows a three-branch decision tree depending on whether a rule fired and whether the rule and ML outputs agree:
+
+\begin{itemize}
+    \item \textbf{Rule fired + agreement:} If combined confidence $\geq 85.0$, the rule's status is returned as a firm decision. If $65.0 \leq$ confidence $< 85.0$, the rule's status is returned cautiously. If confidence $< 65.0$, the status defaults to ``Needs Manual Review''.
+
+    \item \textbf{Rule fired + disagreement:} If the confidence gap between rule and ML is $\leq 20.0$ (the \texttt{DISAGREEMENT\_GAP\_THRESHOLD}), the rule's status is returned regardless of the combined confidence level. If the gap exceeds 20.0 and combined confidence $\geq 85.0$, the rule's status is still returned. In the $65.0$--$85.0$ range, the rule's status is returned as a cautious decision. Only when confidence $< 65.0$ does the status become ``Needs Manual Review''.
+
+    \item \textbf{No rule fired:} If combined confidence $\geq 65.0$, the ML warranty decision is mapped to a status: Production Failure and According to Specification map to ``Approved'', Customer Failure maps to ``Rejected''. If confidence $< 65.0$, the status is ``Needs Manual Review''.
+\end{itemize}
+
+The \texttt{decision\_engine} tag indicates which layers contributed to the final decision. It has four possible values:
+
+\begin{itemize}
+    \item \texttt{LLM+Rule+ML} --- rule fired and LLM signal present (LLM confidence $\geq 0.5$)
+    \item \texttt{Rule+ML} --- rule fired, no LLM signal
+    \item \texttt{LLM+ML} --- no rule fired, LLM signal present
+    \item \texttt{ML} --- no rule fired, no LLM signal
+\end{itemize}
+
+\textbf{Used in:} Section 3.10.3 (Score Combination), Section 5.5 (Threshold Calibration)
+
+\section{Large Language Models (LLM Layer)}
+
+\subsection{Transformer Architecture Overview}
+
+Large Language Models (LLMs) are neural networks trained on massive text corpora to predict the probability distribution of the next token in a sequence. The dominant architecture underlying modern LLMs is the Transformer, introduced by Vaswani et al. (2017). The Transformer forgoes recurrence in favour of a self-attention mechanism that allows every token in a sequence to attend to every other token simultaneously.
+
+The core computation in a Transformer encoder layer is:
+
+\begin{equation}
+\text{Attention}(Q, K, V) = \text{softmax}\left(\frac{QK^T}{\sqrt{d_k}}\right)V
+\end{equation}
+
+where:
+\begin{itemize}
+    \item $Q$ = Query matrix
+    \item $K$ = Key matrix
+    \item $V$ = Value matrix
+    \item $d_k$ = key/query dimension
+\end{itemize}
+
+Multi-head attention is defined as:
+
+\begin{align}
+\text{MultiHead}(Q, K, V) &= \text{Concat}(\text{head}_1, \ldots, \text{head}_h)W_O \\
+\text{head}_i &= \text{Attention}(QW_{Qi}, KW_{Ki}, VW_{Vi})
+\end{align}
+
+TRACE does not implement a Transformer from scratch. Rather, it accesses pre-trained LLMs through a dual-provider architecture: OpenAI (gpt-4o-mini) as the primary provider and OpenRouter (arcee-ai/trinity-large-preview:free) as the fallback. Understanding the underlying architecture is relevant for interpreting the model's capabilities: the self-attention mechanism allows the LLM to resolve semantic ambiguities in technician notes by attending to contextual cues across the entire note, a capability that simple keyword matching cannot replicate.
+
+\textbf{Historical note:} The original LLM integration used only OpenRouter. Dual-provider support (OpenAI + OpenRouter) was added in commit \texttt{d5a701d} (``Add dual-provider LLM support''). OpenAI is used when \texttt{OPENAI\_API\_KEY} is set; otherwise, OpenRouter is used as the fallback.
+
+\subsection{Prompt Engineering}
+
+Prompt engineering is the practice of carefully designing the natural-language input (``prompt'') to an LLM to elicit a desired format, style, or content in its response. Because LLMs are trained to complete text, the phrasing, structure, and constraints embedded in the prompt strongly influence the output.
+
+TRACE uses structured prompts with four key design patterns:
+
+\begin{itemize}
+    \item \textbf{Explicit output format specification:} Each prompt instructs the model to respond only with JSON in an exact format.
+    \item \textbf{Role framing:} Prompts begin with role definitions such as ``You are an automotive warranty analyst.''
+    \item \textbf{Enumerated constraints:} Allowed values for categorical outputs are listed explicitly in the prompt to eliminate hallucinated outputs.
+    \item \textbf{Disambiguation rules:} Stage 1 includes ordered disambiguation rules (first match wins) to resolve ambiguous categories (e.g., ``overheating'' $\rightarrow$ \texttt{engine\_symptom}, not \texttt{electrical\_issue}).
+\end{itemize}
+
+TRACE employs three distinct prompt templates: \texttt{UNDERSTAND\_CLAIM\_PROMPT}, \texttt{TRANSLATE\_ML\_FEATURES\_PROMPT}, and \texttt{FORMAT\_OUTPUT\_PROMPT}.
+
+\textbf{LLM Configuration:} All LLM calls use \texttt{temperature=0} and \texttt{seed=42} for deterministic outputs. The \texttt{response\_format=\{"type": "json\_object"\}} parameter forces valid JSON output. Earlier versions used \texttt{temperature=0.3}, which produced inconsistent outputs; this was changed in commit \texttt{d851af8}.
+
+\subsection{Zero-Shot Inference}
+
+Zero-shot inference refers to using a pre-trained LLM to perform a task it was not explicitly fine-tuned for, relying solely on the instruction in the prompt. No labelled examples of the specific task are provided within the prompt.
+
+TRACE uses zero-shot inference for all three LLM stages because:
+\begin{enumerate}
+    \item the prompt constraints are sufficiently tight to guide the model reliably, and
+    \item including examples would increase per-request token cost and latency.
+\end{enumerate}
+
+The deterministic temperature setting (\texttt{temperature=0}, \texttt{seed=42}) used in all TRACE LLM calls eliminates creative variation entirely, biasing the model towards the most likely and therefore most consistent JSON output.
+
+\subsection{API-Based LLM Integration}
+
+TRACE accesses LLM capabilities through a dual-provider architecture:
+
+\begin{itemize}
+    \item \textbf{Primary:} OpenAI (gpt-4o-mini) when \texttt{OPENAI\_API\_KEY} is set.
+    \item \textbf{Fallback:} OpenRouter (arcee-ai/trinity-large-preview:free) when only \texttt{OPENROUTER\_API\_KEY} is set.
+\end{itemize}
+
+The integration uses a standard HTTP POST request to the \texttt{/v1/chat/completions} endpoint (or the OpenAI client library), sending the prompt as a user-role message and specifying a JSON response format.
+
+The LLM layer is entirely optional: if neither \texttt{OPENAI\_API\_KEY} nor \texttt{OPENROUTER\_API\_KEY} is set, or if the technician note is trivially short ($\leq$ 5 characters), the pipeline bypasses all three LLM stages and falls back to deterministic feature extraction. This graceful degradation ensures the system remains operational in air-gapped or cost-sensitive deployments.
+
+Retry logic with exponential back-off ($2^{\text{attempt}}$ seconds, max 2 retries) is implemented in \texttt{understand\_claim\_with\_retry()} to handle transient network failures and rate limiting.
+
+\textbf{LLM Categories (7 classes):} The LLM categorizes technician notes into one of: \texttt{moisture\_damage}, \texttt{physical\_damage}, \texttt{ntf}, \texttt{electrical\_issue}, \texttt{engine\_symptom}, \texttt{communication\_fault}, or \texttt{other}.
+
+\textbf{LLM Confidence Weight:} When LLM signal is present, it contributes 15\% weight (\texttt{LLM\_WEIGHT = 0.15}) to the final combined confidence score. This was added in commit \texttt{d1904f2} (``integrate LLM confidence into combine\_scores with 15\% weight'').
+
+\textbf{Used in:} Section 3.10 (Six-Stage Pipeline), Section 5.6 (LLM Integration Testing)
+
+\section{Text Feature Extraction (Current Implementation)}
+
+\subsection{TF-IDF Vectorisation of DTC Text}
+
+Term Frequency Inverse Document Frequency (TF-IDF) is a statistical measure that quantifies how characteristic a term is to a specific document relative to a corpus. It is the primary mechanism by which TRACE converts the raw DTC code string into a numerical feature vector for the ML classifier.
+
+\begin{align}
+TF(t,d) &= \frac{\text{count of } t \text{ in } d}{\text{total terms in } d} \\
+IDF(t,D) &= \log\left(\frac{1 + |D|}{1 + df(t)}\right) + 1 \\
+TFIDF(t,d,D) &= TF(t,d) \cdot IDF(t,D)
+\end{align}
+
+where:
+\begin{itemize}
+    \item \(|D|\) = total documents in corpus
+    \item \(df(t)\) = number of documents containing term \(t\)
+\end{itemize}
+
+In TRACE, each ``document'' is the space-joined DTC string for one claim. The raw fault code input uses comma-separated codes (e.g., ``C0045, P0987''), which \texttt{extract\_dtc\_features()} splits on commas and re-joins with spaces (e.g., ``C0045 P0987'') before TF-IDF tokenisation. The corpus is derived from the training split of \texttt{synthetic\_warranty\_claims\_v9.csv} (100{,}000 rows, model years 2019--2025). The TF-IDF vectoriser is configured with \texttt{max\_features=40}, retaining only the 40 most informative DTC token types across the corpus.
+
+\textbf{Critical:} The TF-IDF vectoriser is fitted exclusively on the training split. At inference time, the stored vocabulary and IDF weights are applied via \texttt{.transform()}. Fitting on the full dataset before splitting would constitute data leakage.
+
+\textbf{Used in:} Section 3.8.2 (Data Leakage), Section 5.1 (Feature Engineering)
+
+\subsection{DTC Feature Extraction (\texttt{extract\_dtc\_features})}
+
+The \texttt{extract\_dtc\_features()} function in \texttt{ml\_predictor.py} parses the raw fault code string into structured features for ML inference. It is the fallback feature extraction path when the LLM is unavailable; when the LLM is present, these DTC features are still produced and merged with the LLM-translated features.
+
+For a non-empty fault code string, the function splits on commas, normalises to uppercase, and returns:
+\begin{itemize}
+    \item \texttt{dtc\_count} --- integer count of DTC codes present
+    \item \texttt{has\_P}, \texttt{has\_U}, \texttt{has\_C}, \texttt{has\_B} --- binary prefix flags indicating whether at least one code starts with each letter
+    \item \texttt{dtc\_text} --- space-joined string of all parsed codes, passed to the TF-IDF vectoriser
+    \item \texttt{dtc\_<code>} --- one binary flag per code in \texttt{HIGH\_VALUE\_DTCS} (see Section 4.2.4)
+\end{itemize}
+
+For empty or invalid inputs (empty string, ``NA'', ``NAN'', ``NONE''), the function returns zeros for all fields and \texttt{dtc\_text = "none"}.
+
+\textbf{Used in:} Section 3.4 (Cascade Architecture), Section 3.10 (Six-Stage Pipeline)
+
+\subsection{Keyword-Based Complaint Matching (\texttt{match\_complaint})}
+
+In the current implementation, the technician's free-text notes are mapped to a fixed enumeration of 14 known complaint labels through a two-stage lookup. This mapping is performed by the \texttt{match\_complaint()} function in \texttt{ml\_predictor.py}.
+
+\textbf{Stage 1 Keyword Map:} The function iterates over a dictionary of 18 keyword-to-complaint mappings and returns the first complaint whose keyword appears as a substring in the lowercased notes. The mapping follows a first-match-wins strategy; keyword order therefore matters. The 18 keywords map onto the 14 complaint labels, with some labels accessible through multiple keywords (e.g., both ``jerk'' and ``accel'' map to ``Engine jerking during acceleration'').
+
+\textbf{Stage 2 Fuzzy Fallback:} If no keyword matches, \texttt{difflib.get\_close\_matches()} is called with a similarity cutoff of 0.25 to find the most similar complaint label in the known list. If no match exceeds the cutoff, the default label ``OBD Light ON'' is returned.
+
+The 14 complaint labels in \texttt{KNOWN\_COMPLAINTS} are:
+
+\begin{verbatim}
+Engine jerking during acceleration, Starting Problem,
+High fuel consumption, OBD Light ON, Vehicle not starting,
+Low pickup, Engine overheating, Rough idling,
+Brake warning light ON, ABS warning light ON,
+Battery warning light ON, Engine stalling,
+Multiple warning lights ON, Transmission jerking
+\end{verbatim}
+
+The resulting complaint label is one-hot encoded via \texttt{OneHotEncoder} to produce a sparse binary feature vector. This feature column is the primary carrier of symptom information for the ML classifier.
+
+\textbf{Limitation:} The fixed-vocabulary approach means that nuanced technician descriptions collapse to generic labels, losing contextual signal. The LLM-based semantic classification described in Section 4.3 addresses this directly, and planned NLP enhancements in Section 4.4 propose replacing it with continuous representations.
+
+\subsection{High-Value DTC One-Hot Flags}
+
+Beyond TF-IDF, TRACE constructs explicit binary indicator features for a curated list of approximately 90 DTC codes. For each code in the \texttt{HIGH\_VALUE\_DTCS} list, a binary feature \texttt{dtc\_<code>} is 1 if that specific code is present in the claim's fault code string, and 0 otherwise.
+
+The list was expanded significantly for the v9 dataset (from the original 9 codes to $\sim$90). The codes span the following categories:
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{|p{3.5cm}|p{5cm}|p{4.5cm}|}
+\hline
+\textbf{Category} & \textbf{DTC Prefix / Examples} & \textbf{Warranty Signal} \\ \hline
+Misfire \& Ignition & P0300--P0306, P0351--P0356 & Strong production failure signal \\ \hline
+OBD Processor & P0562, P0563, P0601--P0608, P0610--P0617 & ECU/controller internal failure \\ \hline
+Power Supply & P0620, P0691--P0694 & Charging system faults \\ \hline
+Catalyst \& Evap & P0420, P0430, P0455--P0457 & Emissions system issues \\ \hline
+Vehicle Speed \& Shaft & P0500--P0502, P0720 & Speed sensor failures \\ \hline
+CAN/LIN Bus & U0001, U0002, U0028--U0038, U0073, U0100--U0184 & Network communication faults \\ \hline
+Body Electronics & B1031, B1045, B1234, B2960, B3055 & Body module failures \\ \hline
+Chassis & C0031, C0036, C0045, C0051, C0082, C0265, C0460, C0550 & Chassis/braking faults \\ \hline
+Sensors (O2, Temp, MAF) & P0038, P0054, P0069--P0118, P0131--P0174 & Sensor degradation patterns \\ \hline
+\end{tabular}
+\end{table}
+
+This approach allows the ML classifier to exploit the strong warranty signal associated with specific DTC codes directly, without relying on the TF-IDF vocabulary to surface them with adequate weight.
+
+\textbf{Used in:} Section 4.3 (Feature Engineering Details), Section 5.1 (Training)
+
+\section{Natural Language Processing --- Current and Planned Enhancements}
+
+\subsection{LLM-Based Semantic Classification (Current Implementation)}
+
+TRACE integrates an LLM-driven semantic understanding layer as part of its six-stage prediction pipeline. This is not merely a partial implementation but a fully operational component that processes every claim when API access is available (see Section 3.10 for the full pipeline).
+
+\textbf{Stage 1 --- Claim Understanding:} \texttt{understand\_claim\_with\_retry()} in \texttt{llm\_client.py} sends the technician notes and DTC code to the LLM with a structured prompt containing disambiguation rules. The LLM returns a JSON object with: \texttt{category} (one of 7 classes), \texttt{normalized\_complaint} (mapped to a \texttt{KNOWN\_COMPLAINTS} label), \texttt{severity}, \texttt{failure\_analysis}, \texttt{reasoning}, and \texttt{confidence}. Retry logic with exponential back-off ($2^{\text{attempt}}$ seconds, max 2 retries) handles transient failures.
+
+\textbf{Stage 3 --- Feature Translation:} When the LLM is available, \texttt{translate\_to\_ml\_features()} replaces the deterministic fallback path. It sends the notes, DTC code, and pre-classified category to the LLM, which returns structured ML features: \texttt{customer\_complaint}, \texttt{dtc\_codes}, \texttt{dtc\_text}, \texttt{dtc\_count}, and the four prefix flags (\texttt{has\_P/U/C/B}). The DTC one-hot flags from \texttt{extract\_dtc\_features()} are then merged into this output to preserve the full feature space.
+
+The LLM layer is entirely optional: if neither \texttt{OPENAI\_API\_KEY} nor \texttt{OPENROUTER\_API\_KEY} is set, or if the technician note is trivially short ($\leq$ 5 characters), the pipeline reverts to the deterministic feature extraction path (\texttt{match\_complaint()} + \texttt{extract\_dtc\_features()}). This graceful degradation ensures operational continuity in air-gapped or cost-sensitive deployments.
+
+\subsection{Motivation: Limitations of the Fixed Complaint Vocabulary}
+
+Despite the LLM semantic layer, the underlying ML feature space still relies on the 14-label one-hot encoding for the complaint feature. This constraint introduces two failure modes:
+
+\begin{itemize}
+    \item \textbf{Information loss:} Technician language is rich in diagnostic nuance that collapses to generic labels.
+    \item \textbf{Mapping brittleness:} The keyword-to-complaint mapping is sensitive to vocabulary differences, and the LLM's normalized output is still forced into one of 14 categories.
+\end{itemize}
+
+Replacing this categorical feature with a continuous semantic representation derived from the full text allows the model to leverage the complete information content of the technician's notes.
+
+\subsection{Text Preprocessing and Tokenisation}
+
+Before any vectorisation, raw technician notes must be preprocessed to reduce noise and normalise vocabulary. Standard preprocessing steps include:
+
+\begin{itemize}
+    \item Lowercasing
+    \item Punctuation removal
+    \item Stop word removal
+    \item Tokenisation
+    \item Stemming / Lemmatisation
+\end{itemize}
+
+\subsection{Planned Vectorisation Approaches}
+
+\subsubsection{TF-IDF on Complaint Text}
+
+The simplest NLP enhancement replaces the one-hot encoded complaint label with a TF-IDF vector computed directly from the raw technician notes. Using a vocabulary of 100--300 terms, this yields a sparse feature vector that captures word importance across the training corpus.
+
+\subsubsection{Dense Sentence Embeddings}
+
+A more powerful approach uses pre-trained sentence embedding models to encode each complaint note as a fixed-length dense vector:
+
+\begin{equation}
+e = \text{SentenceEncoder}(\text{text})
+\end{equation}
+
+Cosine similarity between two embeddings is:
+
+\begin{equation}
+\cos(e_1, e_2) = \frac{e_1 \cdot e_2}{\|e_1\| \|e_2\|}
+\end{equation}
+
+Dense embeddings can represent semantically similar complaints as nearby vectors, even when they share no common keywords.
+
+\subsubsection{LLM Feature Integration During Training}
+
+The current LLM semantic output is used only at inference time. The planned enhancement formally integrates LLM-extracted features during training by generating dataset-level semantic complaint features across the entire training corpus, then persisting the feature mapping for consistent inference. This would require batch LLM calls during model training and a persisted mapping table in the model bundle.
+
+\subsection{Integration Architecture for Free-Text NLP}
+
+Regardless of the chosen vectorisation strategy, the NLP layer integrates into the TRACE pipeline as a feature transformation step within the six-stage architecture:
+
+\begin{align}
+\text{Technician Notes} &\rightarrow [\text{NLP Vectoriser}] \rightarrow X_{\text{complaint\_nlp}} \\
+X_{\text{base}} &= [X_{\text{complaint\_nlp}} \mid X_{\text{dtc\_tfidf}} \mid X_{\text{dtc\_flags}} \mid {} \notag \\
+&\quad X_{\text{supplier}} \mid X_{\text{mileage}} \mid X_{\text{year}} \mid {} \notag \\
+&\quad X_{\text{mileage\_bracket}} \mid X_{\text{claim\_age}} \mid X_{\text{voltage}} \mid {} \notag \\
+&\quad X_{\text{voltage\_bracket}} \mid X_{\text{dtc\_count\_bracket}} \mid {} \notag \\
+&\quad X_{\text{interactions}}] \\
+&\rightarrow \texttt{clf\_fa.predict\_proba()} + \texttt{clf\_wd.predict\_proba()}
+\end{align}
+
+The feature vector shown above reflects the full 13-transformer pipeline currently in production (see Section 3.9 for the complete feature list). The NLP vectoriser object must be persisted alongside the trained models in the model bundle and called at inference time --- either as a scikit-learn transformer for TF-IDF-based approaches, or as a persisted LLM mapping table for semantic features.
+
+\textbf{Used in:} Section 3.9 (Feature Engineering), Section 3.10 (Six-Stage Pipeline), Section 6.2 (Future Work --- NLP Enhancement)
+
+\section{Data Preprocessing and Feature Engineering}
+
+\subsection{One-Hot Encoding (OHE)}
+
+One-hot encoding converts a categorical variable with \(k\) distinct values into a binary vector of length \(k\), where exactly one position is 1 and all others are 0.
+
+In TRACE, \texttt{OneHotEncoder} is applied to:
+\begin{itemize}
+    \item Customer Complaint
+    \item Supplier
+    \item Mileage Bracket
+    \item Voltage Bracket
+    \item DTC Count Bracket
+\end{itemize}
+
+All OHE instances are fitted on the training split only and serialised into the model bundle for consistent application at inference time. \texttt{handle\_unknown="ignore"} is set to gracefully handle unseen categories.
+
+\subsection{Standard Scaling}
+
+Standard scaling transforms a continuous feature to have zero mean and unit variance:
+
+\begin{equation}
+z = \frac{x - \mu_{\text{train}}}{\sigma_{\text{train}}}
+\end{equation}
+
+where \(\mu_{\text{train}}\) and \(\sigma_{\text{train}}\) are computed on the training split only.
+
+In TRACE, \texttt{StandardScaler} is applied to \texttt{Mileage\_km}, \texttt{Year}, \texttt{Claim Age}, and \texttt{Voltage} for consistency with the sparse matrix pipeline and forward compatibility.
+
+\subsection{Mileage Binning and Bracket Encoding}
+
+Raw odometer readings are discretised into brackets:
+
+\begin{itemize}
+    \item \([0, 20000)\) = \texttt{low}
+    \item \([20000, 60000)\) = \texttt{mid}
+    \item \([60000, 100000)\) = \texttt{high}
+    \item \([100000, \infty)\) = \texttt{very\_high}
+\end{itemize}
+
+This mileage\_bracket feature is derived after the train/test split and then one-hot encoded.
+
+\subsection{Voltage Binning and Bracket Encoding}
+
+Voltage readings are discretised into seven brackets based on critical automotive thresholds. The finer granularity compared to the original four-bin scheme captures the distinct failure-mode boundaries at 13.5\,V (low-charging threshold), 14.5\,V (upper normal), 15.4\,V (EOS onset for ASIC CJ327), and 16.0\,V (over-voltage rule trigger):
+
+\begin{itemize}
+    \item \([0, 11.0]\) = \texttt{very\_low} (battery depleted)
+    \item \((11.0, 13.5]\) = \texttt{low} (below normal charging)
+    \item \((13.5, 14.5]\) = \texttt{normal} (normal operating range)
+    \item \((14.5, 15.4]\) = \texttt{moderate\_high} (approaching EOS threshold)
+    \item \((15.4, 16.0]\) = \texttt{high} (EOS threshold for ASICs)
+    \item \((16.0, 17.0]\) = \texttt{very\_high} (severe over-voltage)
+    \item \((17.0, \infty)\) = \texttt{extreme} (track-burnt EOS)
+\end{itemize}
+
+This voltage\_bracket feature captures non-linear voltage effects that a single scaled numeric would miss. The interaction features (\texttt{volt\_high\_and\_P}, \texttt{volt\_low\_and\_U}, \texttt{volt\_normal\_and\_C}) are defined against the same thresholds used here (15.4\,V for ``high'', 11.0\,V for ``low'', 11.0--14.5\,V for ``normal''), ensuring consistency between bracket encoding and boolean cross-terms.
+
+\subsection{DTC Count Bracket Encoding}
+
+The number of DTC codes in a claim is discretised:
+
+\begin{itemize}
+    \item 0 = \texttt{none}
+    \item 1 = \texttt{single}
+    \item 2--3 = \texttt{few}
+    \item 4+ = \texttt{many}
+\end{itemize}
+
+Customer Failure claims average 2.3 DTC codes vs. 1.5 for Production Failure, making this a predictive signal.
+
+\subsection{Interaction Features}
+
+Cross-terms between voltage and DTC prefix capture failure modes that neither feature alone would detect:
+
+\begin{itemize}
+    \item \texttt{volt\_high\_and\_P}: (Voltage $>$ 15.4) $\land$ (has\_P = 1) --- high voltage + P-code = strong PF signal
+    \item \texttt{volt\_low\_and\_U}: (Voltage $<$ 11.0) $\land$ (has\_U = 1) --- low voltage + U-code = network fault
+    \item \texttt{volt\_normal\_and\_C}: (11 $\leq$ Voltage $\leq$ 14.5) $\land$ (has\_C = 1) --- normal voltage + C-code = chassis issue
+    \item \texttt{has\_multiple\_prefixes}: (has\_P + has\_U + has\_C + has\_B) $>$ 1 --- multiple DTC categories $\rightarrow$ more severe
+\end{itemize}
+
+\subsection{Claim Age Derivation}
+
+Claim Age is computed as:
+
+\begin{equation}
+\text{claim\_age} = \text{claim\_date.year} - \text{vehicle\_manufacture\_year}
+\end{equation}
+
+This feature directly encodes warranty eligibility and has high practical value.
+
+\subsection{Sparse Matrix Concatenation}
+
+The TRACE feature matrix is assembled from a heterogeneous mix of dense arrays and sparse matrices. All components are combined using \texttt{scipy.sparse.hstack()}:
+
+\begin{align}
+X = \texttt{hstack}([&X_{\text{complaint}} \mid X_{\text{dtc\_tfidf}} \mid X_{\text{dtc\_flags}} \mid {} \notag \\
+&X_{\text{supplier}} \mid X_{\text{mileage}} \mid X_{\text{year}} \mid {} \notag \\
+&X_{\text{mileage\_bracket}} \mid X_{\text{claim\_age}} \mid X_{\text{voltage}} \mid {} \notag \\
+&X_{\text{voltage\_bracket}} \mid X_{\text{dtc\_count\_bracket}} \mid X_{\text{interactions}}])
+\end{align}
+
+The resulting sparse matrix \(X\) is passed directly to the classifiers.
+
+\textbf{Used in:} Section 5.1 (Feature Matrix Assembly), Section 3.8.1 (Train/Test Split)
+
+\section{Training Pipeline Architecture}
+
+\subsection{Train/Test Split}
+
+The dataset is divided into a training set (80\%) and a held-out test set (20\%) using \texttt{train\_test\_split()} with a fixed \texttt{random\_state=42}.
+
+\begin{align}
+\text{Train} &= 80{,}000 \text{ samples} \\
+\text{Test} &= 20{,}000 \text{ samples}
+\end{align}
+
+All feature transformers are fitted using only the training split and then applied to both training and test sets.
+
+The source dataset is \texttt{synthetic\_warranty\_claims\_v9.csv} containing 100{,}000 warranty claims from 2019--2025. The target variables are Failure Analysis (6 classes) and Warranty Decision (3 classes). Feature engineering (Section 4) is applied independently to each split after the partition.
+
+\subsection{Data Leakage and Prevention}
+
+Data leakage occurs when information from the test set is inadvertently used during model training, causing inflated evaluation metrics that do not generalise.
+
+Two forms of leakage are particularly relevant to TRACE:
+\begin{itemize}
+    \item \textbf{Transformer leakage:} If \texttt{fit\_transform()} is called on the full dataset instead of the training split only, statistics such as TF-IDF vocabulary, OHE categories, and scaler means/variances would incorporate test data. TRACE prevents this by fitting all 10 transformers on \texttt{df\_tr} exclusively and applying \texttt{transform()} to \texttt{df\_te}.
+    \item \textbf{Cascade leakage:} In the cascade architecture (Section 3.4), the WD classifier uses FA classifier probabilities as input features. If the FA model's in-sample predictions (on data it was trained on) were used, the probabilities would be overconfident and unrealistically well-calibrated, giving the WD classifier an unfair advantage during training. TRACE prevents this by using out-of-fold probabilities (Section 5.3).
+\end{itemize}
+
+\textbf{Rule:} Fit on train, transform on test. This applies to all transformers and to the cascade probability generation.
+
+\subsection{Out-of-Fold Cross-Validation for Cascade Training}
+
+K-fold cross-validation partitions the training set into \(K\) equal-sized folds. For each of \(K\) iterations, \(K-1\) folds are used for training and the remaining fold is used for evaluation.
+
+\begin{align}
+\text{For } k &= 1 \text{ to } K: \\
+&\text{Train } \texttt{clf\_fa} \text{ on folds } \{1,\dots,K\}\setminus\{k\} \\
+&\text{Predict probabilities on fold } k
+\end{align}
+
+TRACE uses \texttt{cross\_val\_predict()} with \texttt{cv=5} and \texttt{method="predict\_proba"} to generate OOF FA probabilities.
+
+After OOF probabilities are generated for the entire training set, the final \texttt{clf\_fa} is retrained on all of \(X_{\text{tr}}\) so that inference-time predictions benefit from the full training data. The WD classifier (\texttt{clf\_wd}) is then trained on the augmented feature matrix \(X_{\text{wd\_tr}} = [X_{\text{tr}} \mid \text{fa\_probs\_tr}]\). See Section 3.4 for the full cascade architecture.
+
+\subsection{Model Serialisation with Pickle}
+
+Once training is complete, all model objects and fitted transformers are bundled into a Python dictionary and serialised to disk using Python's \texttt{pickle} module.
+
+\begin{verbatim}
+bundle = {
+  'clf_fa': clf_fa,                    # XGBClassifier (6 classes)
+  'clf_wd': clf_wd,                    # XGBClassifier (3 classes)
+  'le_fa': le_fa,                      # LabelEncoder (FA)
+  'le_wd': le_wd,                      # LabelEncoder (WD)
+  'ohe': ohe,                          # OneHotEncoder (Customer Complaint)
+  'tfidf_d': tfidf_d,                  # TfidfVectorizer (DTC text, max_features=40)
+  'ohe_supplier': ohe_supplier,        # OneHotEncoder (Supplier)
+  'mileage_scaler': mileage_scaler,    # StandardScaler (Mileage_km)
+  'year_scaler': year_scaler,          # StandardScaler (Year)
+  'ohe_mileage': ohe_mileage,          # OneHotEncoder (mileage_bracket)
+  'claim_age_scaler': claim_age_scaler,# StandardScaler (Claim Age)
+  'voltage_scaler': voltage_scaler,    # StandardScaler (Voltage)
+  'ohe_voltage_bracket': ohe_voltage_bracket,  # OneHotEncoder (voltage_bracket)
+  'ohe_dtc_count_bracket': ohe_dtc_count_bracket  # OneHotEncoder (dtc_count_bracket)
+}
+\end{verbatim}
+
+\textbf{Historical note:} The original bundle contained RandomForest classifiers and fewer transformers (no voltage\_scaler, ohe\_voltage\_bracket, ohe\_dtc\_count\_bracket). The bundle was expanded when voltage features and DTC count brackets were added to the ML model.
+
+The bundle is loaded at application startup in \texttt{main.py} and used by the \texttt{run\_ml()} function in \texttt{ml\_predictor.py} for inference. See Section 6.1 (Deployment) for the loading and inference pipeline.
+
+\textbf{Used in:} Section 5.1 (Training and Saving), Section 6.1 (Deployment)
+
+\section{Model Evaluation Metrics}
+
+\subsection{Confusion Matrix}
+
+The confusion matrix is a square matrix of dimensions \(C \times C\), where \(C\) is the number of classes. Entry \((i,j)\) represents the number of instances where the true label was class \(i\) and the predicted label was class \(j\).
+
+For binary classification, the four cells are:
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{|p{4cm}|p{9cm}|}
+\hline
+\textbf{Cell} & \textbf{Meaning} \\ \hline
+True Positive (TP) & Predicted positive, actual positive --- correct approval \\ \hline
+True Negative (TN) & Predicted negative, actual negative --- correct rejection \\ \hline
+False Positive (FP) & Predicted positive, actual negative --- wrongly approved \\ \hline
+False Negative (FN) & Predicted negative, actual positive --- wrongly rejected \\ \hline
+\end{tabular}
+\end{table}
+
+\subsection{Accuracy}
+
+\begin{equation}
+\text{Accuracy} = \frac{\text{number of correct predictions}}{\text{total predictions}}
+\end{equation}
+
+Accuracy is useful when classes are balanced.
+
+\subsection{Precision}
+
+\begin{equation}
+\text{Precision}(c) = \frac{TP_c}{TP_c + FP_c}
+\end{equation}
+
+High precision means that when the model predicts class \(c\), it is usually right.
+
+\subsection{Recall (Sensitivity)}
+
+\begin{equation}
+\text{Recall}(c) = \frac{TP_c}{TP_c + FN_c}
+\end{equation}
+
+High recall means that the model correctly finds most true instances of class \(c\).
+
+\subsection{F1 Score}
+
+\begin{equation}
+F1(c) = \frac{2 \cdot \text{Precision}(c)\cdot \text{Recall}(c)}{\text{Precision}(c)+\text{Recall}(c)}
+\end{equation}
+
+Equivalently,
+
+\begin{equation}
+F1 = \frac{2TP}{2TP + FP + FN}
+\end{equation}
+
+\subsection{Macro vs Weighted Averaging}
+
+\begin{align}
+\text{Macro F1} &= \frac{1}{C}\sum_{c=1}^{C} F1(c) \\
+\text{Weighted F1} &= \sum_{c=1}^{C}\left(\frac{\text{support}(c)}{N}\right)F1(c)
+\end{align}
+
+Macro averaging treats all classes equally, while weighted averaging accounts for class frequency.
+
+\subsection{Classification Report}
+
+The \texttt{classification\_report()} function generates a tabular summary presenting precision, recall, F1 score, and support for every class, followed by macro-averaged and weighted-averaged summary rows.
+
+\textbf{Used in:} Section 5.4 (Evaluation Section), Section 5.5 (Results Discussion)
+
+\section{Hybrid Pipeline Architecture}
+
+\subsection{What is a Hybrid ML Pipeline?}
+
+A hybrid ML pipeline is a system that combines two or more fundamentally different inference mechanisms --- such as deterministic rule engines, statistical classifiers, and neural language models --- into a unified decision process.
+
+The TRACE pipeline is hybrid in three senses:
+\begin{enumerate}
+    \item it combines rule-based and ML-based inference,
+    \item it operates conditionally, and
+    \item its final output is produced by blending confidence scores from multiple components.
+\end{enumerate}
+
+\subsection{Six-Stage Prediction Flow}
+
+The \texttt{predict()} function in \texttt{ml\_predictor.py} orchestrates a six-stage pipeline:
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{|c|p{4cm}|p{8cm}|}
+\hline
+\textbf{Stage} & \textbf{Component} & \textbf{Description} \\ \hline
+1 & LLM Understanding (optional) & \texttt{understand\_claim\_with\_retry()} categorises the claim into 7 categories and extracts an initial failure analysis hypothesis. Dual-provider: OpenAI (gpt-4o-mini) or OpenRouter fallback. \\ \hline
+2 & Rule Engine & \texttt{run\_rules()} evaluates 9 priority-ordered rules (over\_voltage, low\_voltage, moisture, physical\_damage, ntf, u\_code, p\_code\_engine, c\_code, b\_code). \\ \hline
+3 & Feature Translation & Builds the structured feature dictionary. LLM path: \texttt{translate\_to\_ml\_features()}. Fallback: \texttt{extract\_dtc\_features()} + \texttt{match\_complaint()}. \\ \hline
+4 & XGBoost Cascade Scoring & Runs FA classifier (6 classes), augments features with FA probabilities, then runs WD classifier (3 classes). \\ \hline
+5 & Score Combination & Blends rule, ML, and LLM confidence with agreement-weighted coefficients. LLM contributes 15\% weight. \\ \hline
+6 & Output Formatting & Assembles the final API response dictionary. LLM path: \texttt{format\_output()}. Fallback: \texttt{assemble\_output\_from\_fields()}. \\ \hline
+\end{tabular}
+\end{table}
+
+\subsection{Score Combination and Weighted Blending}
+
+The \texttt{combine\_scores()} function implements weighted blending with three components: rule confidence, ML confidence, and LLM signal:
+
+\begin{align}
+\text{If rule fires and agrees with ML: } \quad
+\text{combined} &= 0.70 \cdot \text{rule\_conf} + 0.30 \cdot \text{ml\_conf} + 5.0 \\
+\text{If rule fires and disagrees: } \quad
+\text{combined} &= 0.55 \cdot \text{rule\_conf} + 0.35 \cdot \text{ml\_conf}
+\end{align}
+
+\textbf{With LLM signal present:} When the LLM is available and its confidence exceeds the low-confidence threshold (0.3), the LLM contributes 15\% weight:
+\begin{equation}
+\text{combined} = 0.595 \cdot \text{rule\_conf} + 0.255 \cdot \text{ml\_conf} + 0.15 \cdot (\text{llm\_conf} \times 100) + 5.0
+\end{equation}
+
+If no rule fires:
+\begin{equation}
+\text{combined} = \text{ml\_conf} \cdot (1 - \text{LLM\_WEIGHT}) + \text{LLM\_WEIGHT} \cdot (\text{llm\_conf} \times 100)
+\end{equation}
+
+If the LLM flagged input as ``other'' with low confidence (\(< 0.3\)), the score is penalised:
+\begin{equation}
+\text{combined} = 0.85 \times \text{combined}
+\end{equation}
+
+Final score:
+\begin{equation}
+\text{combined} = \text{clamp}(\text{round}(\text{combined}, 1), 0.0, 98.0)
+\end{equation}
+
+\textbf{Weight constants:}
+\begin{itemize}
+    \item \texttt{RULE\_WEIGHT\_AGREE} = 0.70
+    \item \texttt{ML\_WEIGHT\_AGREE} = 0.30
+    \item \texttt{LLM\_WEIGHT} = 0.15
+    \item \texttt{RULE\_WEIGHT\_DISAGREE} = 0.55
+    \item \texttt{ML\_WEIGHT\_DISAGREE} = 0.35
+    \item \texttt{AGREEMENT\_BONUS} = 5.0
+    \item \texttt{WEAK\_INPUT\_PENALTY} = 0.85
+\end{itemize}
+
+\subsection{Confidence Thresholds and Status Assignment}
+
+\begin{itemize}
+    \item \(\text{combined} \geq 85.0\) \(\rightarrow\) Firm decision
+    \item \(65.0 \leq \text{combined} < 85.0\) \(\rightarrow\) Conditional decision
+    \item \(\text{combined} < 65.0\) \(\rightarrow\) Needs Manual Review
+\end{itemize}
+
+The manual review path is an intentional safety mechanism.
+
+\subsection{Decision Engine Tagging}
+
+Every TRACE output includes a \texttt{decision\_engine} field indicating which layers contributed to the final decision:
+
+\begin{itemize}
+    \item \texttt{LLM+Rule+ML} --- all three layers contributed
+    \item \texttt{Rule+ML} --- rule fired, no LLM signal
+    \item \texttt{LLM+ML} --- no rule fired, LLM present
+    \item \texttt{ML} --- neither rule nor LLM contributed
+\end{itemize}
+
+Tracking decision engine distribution in production telemetry supports auditing and future rule-engine expansion.
+
+\textbf{Used in:} Section 5.6 (Production Monitoring), Section 6.1 (Future Enhancements)
+
+\section{Domain Concepts: Automotive Warranty Classification}
+
+\subsection{Diagnostic Trouble Codes (DTCs)}
+
+A Diagnostic Trouble Code (DTC) is a standardised alphanumeric code stored by an automotive Electronic Control Unit (ECU) when the vehicle's onboard diagnostics system detects a fault condition.
+
+Each DTC follows the format:
+\[
+[\text{Prefix}][\text{System}][\text{Fault Number}]
+\]
+
+The TRACE dataset contains DTCs from over 1,973 distinct codes covering Indian automotive OEM vehicles.
+
+\subsection{DTC Prefix Taxonomy (P, U, C, B)}
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{|p{1.5cm}|p{3cm}|p{4cm}|p{5cm}|}
+\hline
+\textbf{Prefix} & \textbf{System} & \textbf{Examples} & \textbf{Typical Warranty Signal} \\ \hline
+P & Powertrain & P0300, P0562 & Strong production failure indicator when combined with engine symptoms \\ \hline
+U & Network & U0100, U0073 & High production failure probability; communication faults rarely caused by customer \\ \hline
+C & Chassis & C0045, C0265 & Moderate production failure probability \\ \hline
+B & Body & B1234, B2960 & Variable; depends on physical damage evidence \\ \hline
+\end{tabular}
+\end{table}
+
+\subsection{Failure Analysis Categories}
+
+Failure Analysis (FA) is the root cause classification of the warranty claim. TRACE predicts categories such as:
+
+\begin{itemize}
+    \item NTF (No Trouble Found)
+    \item Sensor short due to moisture
+    \item Connector damage
+    \item ASIC CJ327 failure due to EOS
+    \item Controller failure due to supplier production failure
+    \item Injector failure
+    \item Wiring harness failure
+\end{itemize}
+
+\subsection{Warranty Decision Types}
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{|p{4cm}|p{6cm}|p{5cm}|}
+\hline
+\textbf{Decision} & \textbf{Meaning} & \textbf{Typical Action} \\ \hline
+Production Failure & Fault attributable to manufacturing or supplier defect & Claim Approved \\ \hline
+Customer Failure & Fault caused by misuse, accident, environmental exposure, or modification & Claim Rejected \\ \hline
+According to Specification & Vehicle/component operating correctly; no defect exists & Claim Closed \\ \hline
+\end{tabular}
+\end{table}
+
+TRACE's hybrid confidence scoring and manual review fallback are designed specifically to minimise costly approval and rejection errors.
+
+\textbf{Used in:} Section 2.3 (Problem Statement), Section 5.5 (Results Discussion)
+
+\section{Chapter Summary}
+
+The following table provides a cross-reference between each foundational concept and the TRACE component where it is applied.
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{|p{6cm}|p{8cm}|}
+\hline
+\textbf{Concept} & \textbf{TRACE Artefact / Section} \\ \hline
+Supervised Multi-class Classification & Both XGBoost classifiers (\texttt{clf\_fa}, \texttt{clf\_wd}) in \texttt{ml\_predictor.py} \\ \hline
+XGBoost (1000 estimators) & \texttt{clf\_fa} and \texttt{clf\_wd} in \texttt{train\_and\_save()}; replaced RandomForest (commit \texttt{a518371}) \\ \hline
+Cascade Classification & \texttt{fa\_probs} appended to \texttt{X\_wd}; OOF via \texttt{cross\_val\_predict()} \\ \hline
+Rule Engine (9 rules) & \texttt{RULES} list + \texttt{run\_rules()} in \texttt{ml\_predictor.py}; over\_voltage, low\_voltage added \\ \hline
+Confidence Thresholding & \texttt{combine\_scores()} --- 85\% firm, 65\% manual, below 65\% review \\ \hline
+LLM Confidence Weight & \texttt{LLM\_WEIGHT = 0.15} in \texttt{combine\_scores()} (commit \texttt{d1904f2}) \\ \hline
+Dual LLM Providers & OpenAI (gpt-4o-mini) + OpenRouter fallback in \texttt{llm\_client.py} \\ \hline
+LLM Consistency & \texttt{temperature=0}, \texttt{seed=42}, disambiguation rules (commit \texttt{d851af8}) \\ \hline
+Prompt Engineering & Prompt templates for understand, translate, and output formatting \\ \hline
+Zero-shot Inference & Stage 1 and Stage 3 LLM calls \\ \hline
+TF-IDF Vectorisation & \texttt{tfidf\_d} on DTC text (max\_features=40) \\ \hline
+Keyword Complaint Matching & \texttt{match\_complaint()} in \texttt{ml\_predictor.py} \\ \hline
+High-Value DTC One-Hots & \texttt{HIGH\_VALUE\_DTCS} list ($\sim$90 codes) as binary features \\ \hline
+One-Hot Encoding & Complaint, supplier, mileage bracket, voltage bracket, DTC count bracket OHE \\ \hline
+Standard Scaling & Mileage, year, claim age, voltage scalers \\ \hline
+Mileage Binning & \texttt{pd.cut()} + mileage bracket OHE \\ \hline
+Voltage Binning & voltage\_bracket OHE (very\_low, low, normal, moderate\_high, high, very\_high, extreme) \\ \hline
+DTC Count Binning & dtc\_count\_bracket OHE (none, single, few, many) \\ \hline
+Interaction Features & volt\_high\_and\_P, volt\_low\_and\_U, volt\_normal\_and\_C, has\_multiple\_prefixes \\ \hline
+Claim Age Feature & Derived from claim date and vehicle year \\ \hline
+Sparse Matrix Concatenation & \texttt{scipy.sparse.hstack()} \\ \hline
+Train/Test Split & \texttt{train\_test\_split(test\_size=0.2, random\_state=42)} \\ \hline
+Data Leakage Prevention & Fit on train only; OOF for cascade \\ \hline
+Out-of-Fold Cross-Validation & \texttt{cross\_val\_predict(cv=5, method='predict\_proba')} \\ \hline
+Model Serialisation & \texttt{pickle.dump(bundle)} $\rightarrow$ \texttt{trace\_models.pkl} \\ \hline
+Accuracy, Precision, Recall, F1 & \texttt{evaluate\_model.py}; \texttt{classification\_report()} \\ \hline
+Hybrid Pipeline & \texttt{predict()} orchestrator in \texttt{ml\_predictor.py} \\ \hline
+Score Combination & \texttt{combine\_scores()} with rule/ML/LLM weights \\ \hline
+Graceful Degradation & LLM fallback paths in \texttt{predict()} (Rule+ML or ML mode) \\ \hline
+DTC Prefix Taxonomy & Prefix-based features + rule engine \\ \hline
+Failure Analysis Labels & \texttt{le\_fa} + 6-class classifier output \\ \hline
+Warranty Decision Labels & \texttt{le\_wd} + 3-class classifier output \\ \hline
+EasyOCR Integration & \texttt{/scan-image-easyocr} endpoint in \texttt{main.py} for DTC/voltage extraction from images \\ \hline
+Centralized Logging & \texttt{logging\_config.py} with DecisionLogger across all pipeline stages \\ \hline
+\end{tabular}
+\end{table}
+
+\noindent End of Chapter 3.
+
+%========================================================
+% EVERYTHING AFTER FOUNDATIONAL CHAPTER COMMENTED OUT
+%========================================================
+\begin{comment}
+
+Additionally, early warranty data suffers from \textit{data maturation}, where limited field exposure causes unreliable failure estimates. These challenges necessitate an intelligent, adaptive system capable of learning continuously from multi-source ECU data.
+
+\chapter{TRACE Framework Overview}
+TRACE consists of five tightly coupled layers:
+\begin{enumerate}
+    \item Data Ingestion and Harmonization
+    \item Feature Engineering and Representation
+    \item Advanced Analytics and AI Models
+    \item Explainability and Decision Support
+    \item Visualization and Reporting
+\end{enumerate}
+
+% ... all remaining chapters and references go here ...
+
+\chapter{\textbf{References}}
+% your references here
+
+\bibliographystyle{IEEEtran}
+\begin{thebibliography}{9}
+\bibitem{theissler}
+A. Theissler et al., ``Predictive maintenance enabled by machine learning,'' \emph{Reliability Engineering \& System Safety}, 2021.
+\bibitem{galonja}
+P. Galonja, ``Machine learning for automotive fault detection using DTC and warranty data,'' Chalmers University, 2020.
+\bibitem{xai}
+S. Lundberg and S.-I. Lee, ``A unified approach to interpreting model predictions,'' \emph{NIPS}, 2017.
+\end{thebibliography}
+
+\end{comment}
+
+\end{document}
