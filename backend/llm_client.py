@@ -176,12 +176,25 @@ Analyze the technician's notes and classify the claim into ONE of these categori
 
 Categories:
 - moisture_damage: water, moisture, wet, flood, rain, humidity, corrosion
-- physical_damage: crack, broken, impact, collision, bent, misuse, dropped
+- physical_damage: crack, broken, impact, collision, bent, misuse, dropped (external abuse)
+- eos_burn: burnt traces, EOS, electrical overstress, charring, melted solder
+- connector_damage: connector loose, pin damage, wiring harness, terminal corrosion, crimping
 - ntf: no fault found, ntf, no trouble, no issue, no defect, intermittent, cannot reproduce
-- electrical_issue: electrical short, wiring, connector
+- electrical_issue: electrical short, wiring fault, controller failure, ECU failure
 - engine_symptom: jerking, pickup, acceleration, overheating, fuel, idle, rough
-- communication_fault: CAN bus, LIN bus, communication error, U-code
+- communication_fault: CAN bus, LIN bus, communication error, U-code, network timeout
 - other: none of the above
+
+DISAMBIGUATION RULES (apply in order - first match wins):
+1. If notes mention burnt traces, EOS, charring, melted, overstress -> eos_burn
+2. If notes mention connector loose, pin damage, terminal, crimping, harness -> connector_damage
+3. If notes mention overheating, jerking, pickup, acceleration, fuel, idle, rough -> engine_symptom
+4. If notes mention CAN bus, LIN bus, communication, network, U-code -> communication_fault
+5. If notes mention moisture, water, wet, flood, rain, humidity, corrosion -> moisture_damage
+6. If notes mention crack, broken, impact, collision, bent, misuse, dropped -> physical_damage
+7. If notes mention no fault, ntf, no trouble, no issue, no defect, intermittent -> ntf
+8. If notes mention electrical short, wiring problems (without engine symptoms) -> electrical_issue
+9. Otherwise -> other
 
 Technician Notes: {notes}
 DTC Code: {dtc_code}
@@ -309,17 +322,19 @@ Technician Notes: {notes}
 DTC Code: {dtc_code}
 
 Classify into EXACTLY ONE category from this list:
-  moisture_damage, physical_damage, ntf, electrical_issue,
-  engine_symptom, communication_fault, other
+  moisture_damage, physical_damage, eos_burn, connector_damage, ntf,
+  electrical_issue, engine_symptom, communication_fault, other
 
 DISAMBIGUATION RULES (apply in order - first match wins):
-1. If notes mention overheating, jerking, pickup, acceleration, fuel consumption, idle, rough -> engine_symptom (NOT electrical_issue)
-2. If notes mention CAN bus, LIN bus, communication, network, U-code -> communication_fault
-3. If notes mention moisture, water, wet, flood, rain, humidity, corrosion -> moisture_damage
-4. If notes mention crack, broken, impact, collision, bent, misuse, dropped, physical damage -> physical_damage
-5. If notes mention no fault, ntf, no trouble, no issue, no defect, intermittent, cannot reproduce -> ntf
-6. If notes mention electrical short, wiring problems (without engine symptoms) -> electrical_issue
-7. Otherwise -> other
+1. If notes mention burnt traces, EOS, charring, melted, overstress -> eos_burn
+2. If notes mention connector loose, pin damage, terminal, crimping, harness -> connector_damage
+3. If notes mention overheating, jerking, pickup, acceleration, fuel consumption, idle, rough -> engine_symptom (NOT electrical_issue)
+4. If notes mention CAN bus, LIN bus, communication, network, U-code -> communication_fault
+5. If notes mention moisture, water, wet, flood, rain, humidity, corrosion -> moisture_damage
+6. If notes mention crack, broken, impact, collision, bent, misuse, dropped, physical damage -> physical_damage
+7. If notes mention no fault, ntf, no trouble, no issue, no defect, intermittent, cannot reproduce -> ntf
+8. If notes mention electrical short, wiring problems (without engine symptoms) -> electrical_issue
+9. Otherwise -> other
 
 Also provide:
 - normalized_complaint: one of these exact strings:

@@ -21,9 +21,7 @@ FIX 3 — Cascade WD train/test mismatch  [RESOLVED]
     calibration check below verifies the distributional gap is minimal.
 
 FIX 4 — End-to-end pipeline evaluation
-    Evaluates the complete Rule+ML pipeline on held-out test rows.
-    LLM stages are disabled during evaluation to avoid network
-    dependencies and long runtimes.
+    Evaluates the complete Rule+ML+LLM pipeline on held-out test rows.
 
 FIX 5 — Preprocessing consistency
     Preprocessing path is identical between training and evaluation.
@@ -36,10 +34,6 @@ NEW — Confidence pipeline evaluation
 import pickle
 import pandas as pd
 import numpy as np
-from dotenv import load_dotenv
-
-load_dotenv()
-
 from sklearn.metrics import (
     accuracy_score, precision_score, recall_score, f1_score,
     confusion_matrix, classification_report,
@@ -47,6 +41,11 @@ from sklearn.metrics import (
 from sklearn.model_selection import train_test_split, cross_val_score
 import sys
 import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+from dotenv import load_dotenv
+
+load_dotenv()
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -220,41 +219,62 @@ def check_cascade_calibration(clf_fa, X_tr, X_te, le_fa):
 
 
 # ---------------------------------------------------------------------------
+# Shared parallel prediction runner
+# ---------------------------------------------------------------------------
+
+def _predict_row(row):
+    """Call predict() for a single row. Returns (row, result) or None."""
+    try:
+        result = predict(
+            fault_code       = str(row["DTC"]) if pd.notna(row["DTC"]) else "",
+            technician_notes = str(row["Customer Complaint"]),
+            voltage          = float(row["Voltage"]) if pd.notna(row.get("Voltage")) else None,
+        )
+        return (row, result)
+    except Exception:
+        return None
+
+
+def run_predictions(df_te, sample_size=200, random_state=42, max_workers=10):
+    """
+    Run predict() on a sample of held-out rows using ThreadPoolExecutor
+    for parallel execution.  Returns a list of (row, result) tuples.
+    """
+    sample = df_te.sample(n=min(sample_size, len(df_te)), random_state=random_state)
+    rows = [row for _, row in sample.iterrows()]
+
+    results = []
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {executor.submit(_predict_row, row): row for row in rows}
+        for future in as_completed(futures):
+            outcome = future.result()
+            if outcome is not None:
+                results.append(outcome)
+
+    print(f"\n  Predictions completed: {len(results)}/{len(rows)} "
+          f"({max_workers} parallel workers)")
+    return results
+
+
+# ---------------------------------------------------------------------------
 # End-to-end pipeline evaluation  (FIX 4)
 # ---------------------------------------------------------------------------
 
-def evaluate_pipeline(df_te, le_fa, le_wd, sample_size=200, random_state=42):
+def evaluate_pipeline(prediction_results, le_fa, le_wd):
     """
-    Run the full predict() pipeline (Rule Engine -> ML -> Score Combination)
-    on held-out rows and compare to ground truth.
-
-    LLM stages are disabled by temporarily clearing API key env vars to
-    avoid network dependencies and long runtimes.
-
-    predict() takes (fault_code, technician_notes).  Customer Complaint
-    text is passed as notes so that match_complaint() maps it back to
-    the same label.
+    Evaluate the full predict() pipeline using pre-computed results
+    from run_predictions().
     """
-    sample = df_te.sample(n=min(sample_size, len(df_te)), random_state=random_state)
-
     true_fa, pred_fa = [], []
     true_wd, pred_wd = [], []
     decision_engines = []
 
-    for _, row in sample.iterrows():
-        try:
-            result = predict(
-                fault_code       = str(row["DTC"]) if pd.notna(row["DTC"]) else "",
-                technician_notes = str(row["Customer Complaint"]),
-                voltage          = float(row["Voltage"]) if pd.notna(row.get("Voltage")) else None,
-            )
-            pred_fa.append(result["failure_analysis"])
-            pred_wd.append(result["warranty_decision"])
-            true_fa.append(row["Failure Analysis"])
-            true_wd.append(row["Warranty Decision"])
-            decision_engines.append(result["decision_engine"])
-        except Exception as e:
-            continue
+    for row, result in prediction_results:
+        pred_fa.append(result["failure_analysis"])
+        pred_wd.append(result["warranty_decision"])
+        true_fa.append(row["Failure Analysis"])
+        true_wd.append(row["Warranty Decision"])
+        decision_engines.append(result["decision_engine"])
 
     if not true_fa:
         print("\n  No pipeline predictions succeeded.")
@@ -270,7 +290,7 @@ def evaluate_pipeline(df_te, le_fa, le_wd, sample_size=200, random_state=42):
     wd_f1  = f1_score(true_wd, pred_wd, average="weighted",
                       labels=le_wd.classes_.tolist(), zero_division=0)
 
-    print(f"\n  Sample size: {len(true_fa)} rows (LLM disabled)")
+    print(f"\n  Sample size: {len(true_fa)} rows")
     print(f"\n  Decision engine breakdown:")
     for eng, cnt in engine_counts.items():
         print(f"    {eng}: {cnt} ({cnt/len(true_fa)*100:.1f}%)")
@@ -305,36 +325,24 @@ def evaluate_pipeline(df_te, le_fa, le_wd, sample_size=200, random_state=42):
 
     return fa_acc, wd_acc
 
+
 # ---------------------------------------------------------------------------
 # Confidence pipeline evaluation  (NEW)
 # ---------------------------------------------------------------------------
 
-def evaluate_confidence(df_te, le_fa, le_wd, sample_size=200, random_state=42):
+def evaluate_confidence(prediction_results, le_fa, le_wd):
     """
-    Evaluate the confidence scoring pipeline by running predict() on
-    held-out rows and analyzing the confidence distribution and its
-    correlation with actual prediction correctness.
+    Evaluate the confidence scoring pipeline using pre-computed results
+    from run_predictions().
     """
-    sample = df_te.sample(n=min(sample_size, len(df_te)), random_state=random_state)
-
     confidences = []
     statuses = []
     correct_wd = []
-    engines = []
 
-    for _, row in sample.iterrows():
-        try:
-            result = predict(
-                fault_code       = str(row["DTC"]) if pd.notna(row["DTC"]) else "",
-                technician_notes = str(row["Customer Complaint"]),
-                voltage          = float(row["Voltage"]) if pd.notna(row.get("Voltage")) else None,
-            )
-            confidences.append(result["confidence"])
-            statuses.append(result["status"])
-            correct_wd.append(result["warranty_decision"] == row["Warranty Decision"])
-            engines.append(result["decision_engine"])
-        except Exception:
-            continue
+    for row, result in prediction_results:
+        confidences.append(result["confidence"])
+        statuses.append(result["status"])
+        correct_wd.append(result["warranty_decision"] == row["Warranty Decision"])
 
     if not confidences:
         print("\n  No confidence scores produced.")
@@ -343,7 +351,7 @@ def evaluate_confidence(df_te, le_fa, le_wd, sample_size=200, random_state=42):
     confs = np.array(confidences)
     correct = np.array(correct_wd)
 
-    print(f"\n  Sample size: {len(confs)} rows (LLM disabled)")
+    print(f"\n  Sample size: {len(confs)} rows")
 
     # Distribution stats
     print(f"\n  Confidence distribution:")
@@ -377,6 +385,7 @@ def evaluate_confidence(df_te, le_fa, le_wd, sample_size=200, random_state=42):
     print(f"\n  Status distribution:")
     for s, cnt in status_counts.items():
         print(f"    {s}: {cnt} ({cnt/len(statuses)*100:.1f}%)")
+
 
 # ---------------------------------------------------------------------------
 # Main
@@ -579,36 +588,44 @@ def main():
     check_cascade_calibration(clf_fa, X_tr, X_te, le_fa)
 
     # ------------------------------------------------------------------
-    # FIX 4 — End-to-end pipeline evaluation (LLM disabled)
+    # Run predictions once (shared by pipeline + confidence evaluation)
     # ------------------------------------------------------------------
     print("\n" + "=" * 70)
-    print("END-TO-END PIPELINE EVALUATION (LLM disabled)")
+    print("RUNNING PARALLEL PREDICTIONS (ThreadPoolExecutor)")
     print("=" * 70)
     print("""
-  Evaluates the full predict() pipeline: Rule Engine -> ML -> Score
-  Combination.  LLM stages are disabled to avoid network dependencies.
-  The pipeline degrades gracefully to Rule+ML or ML-only mode.
+  Running predict() on 200 held-out rows with 10 parallel workers.
+  Results are shared between pipeline and confidence evaluation.
+  If LLM API keys are set, the full LLM+Rule+ML pipeline is used.
 """)
     try:
-        evaluate_pipeline(df_te, le_fa, le_wd, sample_size=200)
+        prediction_results = run_predictions(df_te, sample_size=200, max_workers=10)
     except ValueError as e:
-        print(f"\n  Pipeline evaluation skipped: {e}")
+        print(f"\n  Prediction run skipped: {e}")
+        prediction_results = []
+
+    # ------------------------------------------------------------------
+    # FIX 4 — End-to-end pipeline evaluation
+    # ------------------------------------------------------------------
+    if prediction_results:
+        print("\n" + "=" * 70)
+        print("END-TO-END PIPELINE EVALUATION")
+        print("=" * 70)
+        evaluate_pipeline(prediction_results, le_fa, le_wd)
 
     # ------------------------------------------------------------------
     # Confidence pipeline evaluation (NEW)
     # ------------------------------------------------------------------
-    print("\n" + "=" * 70)
-    print("CONFIDENCE PIPELINE EVALUATION")
-    print("=" * 70)
-    print("""
+    if prediction_results:
+        print("\n" + "=" * 70)
+        print("CONFIDENCE PIPELINE EVALUATION")
+        print("=" * 70)
+        print("""
   Evaluates the confidence scoring system: how confidence correlates
   with actual prediction accuracy, and the distribution across status
   buckets (Firm >=85%, Review 65-84%, Manual <65%).
 """)
-    try:
-        evaluate_confidence(df_te, le_fa, le_wd, sample_size=200)
-    except ValueError as e:
-        print(f"\n  Confidence evaluation skipped: {e}")
+        evaluate_confidence(prediction_results, le_fa, le_wd)
 
     # ------------------------------------------------------------------
     # Summary

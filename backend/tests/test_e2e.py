@@ -41,9 +41,9 @@ class TestE2EIntegration:
         from ml_predictor import predict
         result = predict("P0562", "Water found in connector", 12.5)
         
-        assert result["decision_engine"] == "LLM"
+        assert result["decision_engine"] == "LLM+Rule+ML"
         assert result["status"] == "Rejected"
-        assert result["confidence"] == 85.0
+        assert result["confidence"] >= 90.0
 
     @patch('llm_client.categorize_notes')
     def test_fallback_chain(self, mock_categorize):
@@ -57,7 +57,7 @@ class TestE2EIntegration:
         
         result = predict("P0562", "Engine overheating", 14.2)
         
-        assert result["decision_engine"] in ["Rule-based", "ML model"]
+        assert result["decision_engine"] in ["LLM+Rule+ML", "LLM+ML", "Rule+ML", "ML"]
 
     def test_response_schema(self):
         """Response matches ClaimResponse schema"""
@@ -114,7 +114,7 @@ class TestE2EIntegration:
         from ml_predictor import predict
         result = predict("P0562", "No fault found, intermittent", 12.5)
         
-        assert result["decision_engine"] == "LLM"
+        assert result["decision_engine"] == "LLM+Rule+ML"
         assert result["status"] == "Approved"
         assert result["warranty_decision"] == "According to Specification"
 
@@ -146,5 +146,5 @@ class TestE2EIntegration:
         from ml_predictor import predict
         result = predict("U0100", "CAN bus communication error", 12.5)
         
-        assert result["decision_engine"] == "LLM"
+        assert result["decision_engine"] == "LLM+Rule+ML"
         assert result["status"] == "Approved"

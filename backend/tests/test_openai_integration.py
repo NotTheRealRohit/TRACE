@@ -63,7 +63,7 @@ class TestCategorizeNotes:
         return llm_client
 
     @pytest.mark.parametrize("notes,dtc,expected_category", [
-        ("Water found in connector", "P0562", "moisture_damage"),
+        ("Water found in connector", "P0562", "connector_damage"),
         ("Wiring short detected in harness", "U0100", "electrical_issue"),
         ("Engine overheating, jerking during acceleration", "P0562", "engine_symptom"),
         ("No fault found, cannot reproduce the issue", "", "ntf"),

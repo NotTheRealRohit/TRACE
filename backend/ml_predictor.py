@@ -15,14 +15,16 @@ Six-Stage Prediction Pipeline  (predict())
       extract a structured failure analysis before any rule or ML logic runs.
 
   Stage 2 — Rule Engine  (run_rules())
-      Seven deterministic automotive rules evaluated in priority order:
+      Nine deterministic automotive rules evaluated in priority order:
+        • over_voltage    (voltage > 16V → Customer Failure,           93 %)
+        • low_voltage     (voltage < 11V → Customer Failure,           95 %)
         • moisture        (keyword match in notes → Customer Failure,  91 %)
         • physical_damage (keyword match          → Customer Failure,  88.5 %)
         • ntf             (No-Trouble-Found keywords → Acc. to Spec,  95 %)
         • u_code          (U-series DTC → Production Failure,          57 %)
-        • p_code_engine   (P0-series + symptom keyword → Prod. Failure, 80.5 %)
-        • c_code          (C-series DTC → Production Failure,          80 %)
-        • b_code          (B-series DTC → Production Failure,          80 %)
+        • p_code_engine   (P0-series + symptom keyword → Cust. Failure, 65 %)
+        • c_code          (C-series DTC → Production Failure,          65 %)
+        • b_code          (B-series DTC → Production Failure,          65 %)
       First matching rule wins; returns rule_id, status, warranty_decision,
       confidence, failure_analysis, and a human-readable reason string.
       Note: Rule confidences have been recalibrated for v9's noisy patterns.
@@ -189,9 +191,9 @@ RULES = [
         "match": lambda fc, notes, voltage: bool(re.search(r'\bU[0-9A-Fa-f]{4}\b', fc)),
         "failure_analysis":  "controller failure due to supplier production failure",
         "warranty_decision": "Production Failure",
-        "status":            "Approved",
+        "status":            "Needs Manual Review",
         "confidence":        57.0,
-        "reason":            "U-series DTC (CAN/LIN communication fault) indicates ECU/controller internal failure — likely production defect.",
+        "reason":            "U-series DTC (CAN/LIN communication fault) — requires manual review due to ambiguous failure source.",
     },
     {
         "id": "p_code_engine",
@@ -200,10 +202,10 @@ RULES = [
             any(k in notes.lower() for k in ("jerk", "pickup", "acceleration", "overheat", "fuel", "idle", "rough"))
         ),
         "failure_analysis":  "ASIC CJ327 failure due to EOS",
-        "warranty_decision": "Production Failure",
-        "status":            "Approved",
-        "confidence":        80.5,
-        "reason":            "Standard P0-series powertrain DTC with matching symptom. ECU-level fault covered under production warranty.",
+        "warranty_decision": "Customer Failure",
+        "status":            "Rejected",
+        "confidence":        65.0,
+        "reason":            "P0-series powertrain DTC with matching symptom keywords. Data analysis shows 74% of these cases are customer-induced failures.",
     },
     {
         "id": "c_code",
@@ -211,7 +213,7 @@ RULES = [
         "failure_analysis":  "Connector damage",
         "warranty_decision": "Production Failure",
         "status":            "Approved",
-        "confidence":        80.0,
+        "confidence":        65.0,
         "reason":            "C-series DTC (chassis/braking system). Connector damage is the most common root cause for this code range.",
     },
     {
@@ -220,7 +222,7 @@ RULES = [
         "failure_analysis":  "Connector damage",
         "warranty_decision": "Production Failure",
         "status":            "Approved",
-        "confidence":        80.0,
+        "confidence":        65.0,
         "reason":            "B-series DTC (body electronics). Consistent with connector or wiring loom damage.",
     },
 ]
@@ -634,10 +636,12 @@ ML_WEIGHT_DISAGREE = 0.35
 LLM_CATEGORY_TO_WARRANTY = {
     "moisture_damage": "Customer Failure",
     "physical_damage": "Customer Failure",
+    "eos_burn": "Customer Failure",
+    "connector_damage": "Production Failure",
     "ntf": "According to Specification",
     "electrical_issue": "Production Failure",
-    "engine_symptom": "Production Failure",
-    "communication_fault": "Production Failure",
+    "engine_symptom": None,
+    "communication_fault": None,
     "other": None,
 }
 
@@ -720,14 +724,14 @@ def combine_scores(
         llm_scaled = llm_conf * 100
         if llm_agrees_rule is True:
             combined_confidence = (
-                RULE_WEIGHT_DISAGREE_LLM * rule_conf
-                + ML_WEIGHT_DISAGREE_LLM * ml_conf
+                (RULE_WEIGHT_DISAGREE_LLM + 0.05) * rule_conf
+                + (ML_WEIGHT_DISAGREE_LLM - 0.05) * ml_conf
                 + LLM_WEIGHT * llm_scaled
             )
         elif llm_agrees_ml is True:
             combined_confidence = (
-                RULE_WEIGHT_DISAGREE_LLM * rule_conf
-                + ML_WEIGHT_DISAGREE_LLM * ml_conf
+                (RULE_WEIGHT_DISAGREE_LLM - 0.05) * rule_conf
+                + (ML_WEIGHT_DISAGREE_LLM + 0.05) * ml_conf
                 + LLM_WEIGHT * llm_scaled
             )
         else:
@@ -744,38 +748,29 @@ def combine_scores(
 
     combined_confidence = round(min(98.0, max(0.0, combined_confidence)), 1)
 
-    if rule_fired and not agreement:
-        gap = abs(rule_conf - ml_conf)
-        if gap <= DISAGREEMENT_GAP_THRESHOLD:
-            status = rule_result.get("status", "Needs Manual Review")
-        elif combined_confidence >= CONFIDENCE_THRESHOLD_FIRM:
-            status = rule_result.get("status", "Needs Manual Review")
-        elif combined_confidence >= CONFIDENCE_THRESHOLD_MANUAL:
-            status = rule_result.get("status", "Needs Manual Review")
-        else:
-            status = "Needs Manual Review"
-    elif rule_fired and agreement:
-        if combined_confidence >= CONFIDENCE_THRESHOLD_FIRM:
-            status = rule_result.get("status", "Needs Manual Review")
-        elif combined_confidence >= CONFIDENCE_THRESHOLD_MANUAL:
-            status = rule_result.get("status", "Needs Manual Review")
-        else:
-            status = "Needs Manual Review"
-    else:
-        if combined_confidence >= CONFIDENCE_THRESHOLD_MANUAL:
-            status_map = {
-                "Production Failure": "Approved",
-                "According to Specification": "Approved",
-                "Customer Failure": "Rejected",
-            }
-            status = status_map.get(ml_result.get("ml_warranty_decision", ""), "Needs Manual Review")
-        else:
-            status = "Needs Manual Review"
-
+    # 1. Determine warranty_decision first
     if rule_fired:
-        warranty_decision = rule_result.get("warranty_decision", ml_result.get("ml_warranty_decision", ""))
+        if agreement:
+            warranty_decision = rule_result["warranty_decision"]
+        else:
+            # Disagreement: let the more confident engine win
+            if ml_result.get("ml_confidence", 0) > rule_result.get("rule_confidence", 0):
+                warranty_decision = ml_result["ml_warranty_decision"]
+            else:
+                warranty_decision = rule_result["warranty_decision"]
     else:
         warranty_decision = ml_result.get("ml_warranty_decision", "")
+
+    # 2. Derive status from warranty_decision + confidence thresholds
+    WARRANTY_DECISION_TO_STATUS = {
+        "Production Failure": "Approved",
+        "According to Specification": "Approved",
+        "Customer Failure": "Rejected",
+    }
+    if combined_confidence >= CONFIDENCE_THRESHOLD_MANUAL:
+        status = WARRANTY_DECISION_TO_STATUS.get(warranty_decision, "Needs Manual Review")
+    else:
+        status = "Needs Manual Review"
 
     llm_has_signal = llm_stage1 is not None and llm_stage1.get("confidence", 0) >= LLM_CONFIDENCE_FOR_TAG
 
