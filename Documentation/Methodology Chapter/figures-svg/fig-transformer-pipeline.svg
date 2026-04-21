@@ -1,0 +1,119 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="100%" viewBox="0 0 680 340" role="img">
+  <title>Transformer Pipeline: 12 Transformers</title>
+  <desc>Diagram showing the 12 transformers in the ML feature pipeline</desc>
+
+  <defs>
+    <marker id="arrow6" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <style>
+      .c-purple rect { fill: #DED8F6; stroke: #534AB7; stroke-width: 1; }
+      .c-purple text { fill: #3C3489; }
+      .c-blue rect { fill: #E6F1FB; stroke: #185FA5; stroke-width: 1; }
+      .c-blue text { fill: #0C447C; }
+      .c-teal rect { fill: #E1F5EE; stroke: #0F6E56; stroke-width: 1; }
+      .c-teal text { fill: #085041; }
+      .c-coral rect { fill: #FAECE7; stroke: #993C1D; stroke-width: 1; }
+      .c-coral text { fill: #712B13; }
+      .c-gray rect { fill: #F1EFE8; stroke: #5F5E5A; stroke-width: 1; }
+      .c-gray text { fill: #444441; }
+      .node rect { stroke-width: 1; }
+      .arr { stroke: #5F5E5A; stroke-width: 1.5; fill: none; }
+      text { font-family: sans-serif; }
+      .th { font-size: 14px; font-weight: 500; }
+      .ts { font-size: 12px; }
+    </style>
+  </defs>
+
+  <text class="th" x="340" y="25" text-anchor="middle" font-size="16" font-weight="500" fill="#212121">Transformer Pipeline: 12 Transformers</text>
+
+  <g class="node c-purple">
+    <rect x="30" y="55" width="130" height="32" rx="6"/>
+    <text class="th" x="95" y="74" text-anchor="middle" font-size="10">OHE Complaint</text>
+    <text class="ts" x="95" y="88" text-anchor="middle" font-size="8">sparse (n×14)</text>
+  </g>
+
+  <g class="node c-purple">
+    <rect x="30" y="95" width="130" height="32" rx="6"/>
+    <text class="th" x="95" y="114" text-anchor="middle" font-size="10">TF-IDF DTC</text>
+    <text class="ts" x="95" y="128" text-anchor="middle" font-size="8">sparse (n×40)</text>
+  </g>
+
+  <g class="node c-blue">
+    <rect x="30" y="135" width="130" height="32" rx="6"/>
+    <text class="th" x="95" y="154" text-anchor="middle" font-size="10">DTC Flags</text>
+    <text class="ts" x="95" y="168" text-anchor="middle" font-size="8">dense (n×95)</text>
+  </g>
+
+  <g class="node c-purple">
+    <rect x="30" y="175" width="130" height="32" rx="6"/>
+    <text class="th" x="95" y="194" text-anchor="middle" font-size="10">OHE Supplier</text>
+    <text class="ts" x="95" y="208" text-anchor="middle" font-size="8">sparse (n×5)</text>
+  </g>
+
+  <g class="node c-teal">
+    <rect x="30" y="215" width="130" height="32" rx="6"/>
+    <text class="th" x="95" y="234" text-anchor="middle" font-size="10">Scaler Mileage</text>
+    <text class="ts" x="95" y="248" text-anchor="middle" font-size="8">dense (n×1)</text>
+  </g>
+
+  <g class="node c-teal">
+    <rect x="30" y="255" width="130" height="32" rx="6"/>
+    <text class="th" x="95" y="274" text-anchor="middle" font-size="10">Scaler Year</text>
+    <text class="ts" x="95" y="288" text-anchor="middle" font-size="8">dense (n×1)</text>
+  </g>
+
+  <g class="node c-purple">
+    <rect x="190" y="55" width="130" height="32" rx="6"/>
+    <text class="th" x="255" y="74" text-anchor="middle" font-size="10">OHE Mileage Bracket</text>
+    <text class="ts" x="255" y="88" text-anchor="middle" font-size="8">sparse (n×4)</text>
+  </g>
+
+  <g class="node c-teal">
+    <rect x="190" y="95" width="130" height="32" rx="6"/>
+    <text class="th" x="255" y="114" text-anchor="middle" font-size="10">Scaler Claim Age</text>
+    <text class="ts" x="255" y="128" text-anchor="middle" font-size="8">dense (n×1)</text>
+  </g>
+
+  <g class="node c-teal">
+    <rect x="190" y="135" width="130" height="32" rx="6"/>
+    <text class="th" x="255" y="154" text-anchor="middle" font-size="10">Scaler Voltage</text>
+    <text class="ts" x="255" y="168" text-anchor="middle" font-size="8">dense (n×1)</text>
+  </g>
+
+  <g class="node c-purple">
+    <rect x="190" y="175" width="130" height="32" rx="6"/>
+    <text class="th" x="255" y="194" text-anchor="middle" font-size="10">OHE Voltage Bracket</text>
+    <text class="ts" x="255" y="208" text-anchor="middle" font-size="8">sparse (n×7)</text>
+  </g>
+
+  <g class="node c-purple">
+    <rect x="190" y="215" width="130" height="32" rx="6"/>
+    <text class="th" x="255" y="234" text-anchor="middle" font-size="10">OHE DTC Count</text>
+    <text class="ts" x="255" y="248" text-anchor="middle" font-size="8">sparse (n×4)</text>
+  </g>
+
+  <g class="node c-coral">
+    <rect x="190" y="255" width="130" height="32" rx="6"/>
+    <text class="th" x="255" y="274" text-anchor="middle" font-size="10">Interactions</text>
+    <text class="ts" x="255" y="288" text-anchor="middle" font-size="8">dense (n×4)</text>
+  </g>
+
+  <line x1="160" y1="271" x2="190" y2="271" class="arr" stroke="#534AB7" marker-end="url(#arrow6)"/>
+
+  <g class="node c-gray">
+    <rect x="350" y="130" width="180" height="50" rx="8"/>
+    <text class="th" x="440" y="152" text-anchor="middle" font-size="11">scipy.sparse.hstack()</text>
+    <text class="ts" x="440" y="172" text-anchor="middle" font-size="9">Feature matrix (n × ~170)</text>
+  </g>
+
+  <text class="ts" x="560" y="70" font-size="9" fill="#5F5E5A">Types:</text>
+  <rect x="560" y="82" width="10" height="10" fill="#DED8F6" stroke="#534AB7"/>
+  <text class="ts" x="575" y="90" font-size="8" fill="#3C3489">One-hot</text>
+  <rect x="560" y="98" width="10" height="10" fill="#E1F5EE" stroke="#0F6E56"/>
+  <text class="ts" x="575" y="106" font-size="8" fill="#085041">Scaler</text>
+  <rect x="560" y="114" width="10" height="10" fill="#E6F1FB" stroke="#185FA5"/>
+  <text class="ts" x="575" y="122" font-size="8" fill="#0C447C">Dense</text>
+  <rect x="560" y="130" width="10" height="10" fill="#FAECE7" stroke="#993C1D"/>
+  <text class="ts" x="575" y="138" font-size="8" fill="#712B13">Interaction</text>
+</svg>

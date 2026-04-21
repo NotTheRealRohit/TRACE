@@ -1,0 +1,348 @@
+\relax 
+\providecommand\babel@aux[2]{}
+\@nameuse{bbl@beforestart}
+\providecommand\hyper@newdestlabel[2]{}
+\providecommand\HyField@AuxAddToFields[1]{}
+\providecommand\HyField@AuxAddToCoFields[2]{}
+\babel@aux{english}{}
+\@writefile{toc}{\contentsline {section}{\numberline {1}Research Methodology}{3}{section.1}\protected@file@percent }
+\newlabel{sec:research-methodology}{{1}{3}{Research Methodology}{section.1}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {1.1}Hybrid Decision Engine Design}{3}{subsection.1.1}\protected@file@percent }
+\newlabel{sec:hybrid-decision-engine-design}{{1.1}{3}{Hybrid Decision Engine Design}{subsection.1.1}{}}
+\newlabel{eq:hybrid-decision}{{1}{3}{Hybrid Decision Engine Design}{equation.1.1}{}}
+\newlabel{eq:engine-tag}{{2}{3}{Hybrid Decision Engine Design}{equation.1.2}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces Hybrid decision engine overview: the six-stage processing pipeline with LLM, rule, and ML inference paths.}}{4}{figure.1}\protected@file@percent }
+\newlabel{fig:hybrid-decision-engine-overview}{{1}{4}{Hybrid decision engine overview: the six-stage processing pipeline with LLM, rule, and ML inference paths}{figure.1}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {1.2}Six-Stage Pipeline Architecture}{4}{subsection.1.2}\protected@file@percent }
+\newlabel{sec:six-stage-pipeline}{{1.2}{4}{Six-Stage Pipeline Architecture}{subsection.1.2}{}}
+\newlabel{eq:pipeline-composition}{{3}{4}{Six-Stage Pipeline Architecture}{equation.1.3}{}}
+\newlabel{eq:stage1}{{4}{4}{Six-Stage Pipeline Architecture}{equation.1.4}{}}
+\newlabel{eq:stage2}{{5}{4}{Six-Stage Pipeline Architecture}{equation.1.5}{}}
+\newlabel{eq:stage3}{{6}{4}{Six-Stage Pipeline Architecture}{equation.1.6}{}}
+\newlabel{eq:stage4}{{7}{4}{Six-Stage Pipeline Architecture}{equation.1.7}{}}
+\newlabel{eq:stage5}{{8}{4}{Six-Stage Pipeline Architecture}{equation.1.8}{}}
+\newlabel{eq:stage6}{{9}{4}{Six-Stage Pipeline Architecture}{equation.1.9}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces Six-stage pipeline architecture with input/output types and fallback paths for each stage.}}{5}{figure.2}\protected@file@percent }
+\newlabel{fig:six-stage-pipeline}{{2}{5}{Six-stage pipeline architecture with input/output types and fallback paths for each stage}{figure.2}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {1.3}Research Problem Formulation}{5}{subsection.1.3}\protected@file@percent }
+\newlabel{sec:research-problem-formulation}{{1.3}{5}{Research Problem Formulation}{subsection.1.3}{}}
+\newlabel{eq:fa-mapping}{{10}{5}{Research Problem Formulation}{equation.1.10}{}}
+\newlabel{eq:wd-mapping}{{11}{5}{Research Problem Formulation}{equation.1.11}{}}
+\newlabel{eq:input-space}{{12}{5}{Research Problem Formulation}{equation.1.12}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {1.4}Evaluation Strategy Overview}{6}{subsection.1.4}\protected@file@percent }
+\newlabel{sec:evaluation-strategy-overview}{{1.4}{6}{Evaluation Strategy Overview}{subsection.1.4}{}}
+\newlabel{eq:test-accuracy}{{13}{6}{Evaluation Strategy Overview}{equation.1.13}{}}
+\newlabel{eq:cv-accuracy}{{14}{6}{Evaluation Strategy Overview}{equation.1.14}{}}
+\newlabel{eq:pipeline-accuracy}{{15}{6}{Evaluation Strategy Overview}{equation.1.15}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {2}Dataset Architecture}{6}{section.2}\protected@file@percent }
+\newlabel{sec:dataset-architecture}{{2}{6}{Dataset Architecture}{section.2}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.1}Synthetic Dataset Overview}{6}{subsection.2.1}\protected@file@percent }
+\newlabel{sec:synthetic-dataset-overview}{{2.1}{6}{Synthetic Dataset Overview}{subsection.2.1}{}}
+\newlabel{eq:dataset-size}{{16}{7}{Synthetic Dataset Overview}{equation.2.16}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces Dataset schema for \texttt  {synthetic\_warranty\_claims\_v9.csv}. All 11 columns with data types, example values, and distribution notes.}}{7}{table.1}\protected@file@percent }
+\newlabel{tab:dataset-schema}{{1}{7}{Dataset schema for \texttt {synthetic\_warranty\_claims\_v9.csv}. All 11 columns with data types, example values, and distribution notes}{table.1}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces Dataset schema overview with example rows illustrating the column structure and data types.}}{8}{figure.3}\protected@file@percent }
+\newlabel{fig:dataset-overview}{{3}{8}{Dataset schema overview with example rows illustrating the column structure and data types}{figure.3}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.2}Failure Analysis Class Distribution}{8}{subsection.2.2}\protected@file@percent }
+\newlabel{sec:fa-class-distribution}{{2.2}{8}{Failure Analysis Class Distribution}{subsection.2.2}{}}
+\newlabel{eq:fa-base-1}{{17}{8}{Failure Analysis Class Distribution}{equation.2.17}{}}
+\newlabel{eq:fa-base-2}{{18}{8}{Failure Analysis Class Distribution}{equation.2.18}{}}
+\newlabel{eq:fa-drift-1}{{19}{8}{Failure Analysis Class Distribution}{equation.2.19}{}}
+\newlabel{eq:fa-drift-2}{{20}{8}{Failure Analysis Class Distribution}{equation.2.20}{}}
+\newlabel{eq:fa-normalised}{{21}{8}{Failure Analysis Class Distribution}{equation.2.21}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {4}{\ignorespaces Failure Analysis class proportions by model year, showing temporal drift from 2019 to 2025.}}{9}{figure.4}\protected@file@percent }
+\newlabel{fig:fa-class-distribution}{{4}{9}{Failure Analysis class proportions by model year, showing temporal drift from 2019 to 2025}{figure.4}{}}
+\newlabel{eq:year-weights}{{22}{9}{Failure Analysis Class Distribution}{equation.2.22}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {2}{\ignorespaces Failure Analysis base proportions and annual drift rates. The ``2025 projected'' column shows the drift-adjusted proportion before normalisation.}}{9}{table.2}\protected@file@percent }
+\newlabel{tab:fa-proportions}{{2}{9}{Failure Analysis base proportions and annual drift rates. The ``2025 projected'' column shows the drift-adjusted proportion before normalisation}{table.2}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.3}Voltage Distribution by Failure Class}{9}{subsection.2.3}\protected@file@percent }
+\newlabel{sec:voltage-distribution}{{2.3}{9}{Voltage Distribution by Failure Class}{subsection.2.3}{}}
+\newlabel{eq:truncated-normal}{{23}{9}{Voltage Distribution by Failure Class}{equation.2.23}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {3}{\ignorespaces Voltage distribution parameters by Failure Analysis class, with truncation bounds and validation assertions. All values from \texttt  {generate\_dataset\_v9(1).py}.}}{10}{table.3}\protected@file@percent }
+\newlabel{tab:voltage-params}{{3}{10}{Voltage distribution parameters by Failure Analysis class, with truncation bounds and validation assertions. All values from \texttt {generate\_dataset\_v9(1).py}}{table.3}{}}
+\newlabel{eq:eos-voltage-nudge}{{24}{10}{Voltage Distribution by Failure Class}{equation.2.24}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {5}{\ignorespaces Voltage distributions by Failure Analysis class, showing class-specific truncated normal distributions with voltage threshold markers.}}{10}{figure.5}\protected@file@percent }
+\newlabel{fig:voltage-distributions}{{5}{10}{Voltage distributions by Failure Analysis class, showing class-specific truncated normal distributions with voltage threshold markers}{figure.5}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.4}Mileage Distribution by Failure Class}{11}{subsection.2.4}\protected@file@percent }
+\newlabel{sec:mileage-distribution}{{2.4}{11}{Mileage Distribution by Failure Class}{subsection.2.4}{}}
+\newlabel{eq:mileage-lognormal}{{25}{11}{Mileage Distribution by Failure Class}{equation.2.25}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {4}{\ignorespaces Mileage distribution parameters by Failure Analysis class. The log-normal parameters $\mu _{\log }$ and $\sigma _{\log }$ parameterise the distribution of $\ln (\text  {Mileage})$. Clipping bounds and expected skewness are shown.}}{11}{table.4}\protected@file@percent }
+\newlabel{tab:mileage-params}{{4}{11}{Mileage distribution parameters by Failure Analysis class. The log-normal parameters $\mu _{\log }$ and $\sigma _{\log }$ parameterise the distribution of $\ln (\text {Mileage})$. Clipping bounds and expected skewness are shown}{table.4}{}}
+\newlabel{eq:connector-bimodal}{{26}{11}{Mileage Distribution by Failure Class}{equation.2.26}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {6}{\ignorespaces Mileage distributions by Failure Analysis class, with bimodal connector damage inset showing early-life assembly defects and wear-and-tear populations.}}{11}{figure.6}\protected@file@percent }
+\newlabel{fig:mileage-distributions}{{6}{11}{Mileage distributions by Failure Analysis class, with bimodal connector damage inset showing early-life assembly defects and wear-and-tear populations}{figure.6}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.5}DTC Code Architecture}{12}{subsection.2.5}\protected@file@percent }
+\newlabel{sec:dtc-code-architecture}{{2.5}{12}{DTC Code Architecture}{subsection.2.5}{}}
+\newlabel{eq:dtc-primary}{{27}{12}{DTC Code Architecture}{equation.2.27}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {5}{\ignorespaces Native DTC pools by Failure Analysis class, with code counts and representative examples. Pool sizes range from 13 (Connector) to 31 (Track).}}{12}{table.5}\protected@file@percent }
+\newlabel{tab:dtc-pools}{{5}{12}{Native DTC pools by Failure Analysis class, with code counts and representative examples. Pool sizes range from 13 (Connector) to 31 (Track)}{table.5}{}}
+\newlabel{eq:companion-dtc}{{28}{12}{DTC Code Architecture}{equation.2.28}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {6}{\ignorespaces Companion DTC pairs with injection probabilities. Each pair represents mechanistically linked codes that frequently co-occur in real warranty data.}}{12}{table.6}\protected@file@percent }
+\newlabel{tab:companion-pairs}{{6}{12}{Companion DTC pairs with injection probabilities. Each pair represents mechanistically linked codes that frequently co-occur in real warranty data}{table.6}{}}
+\newlabel{eq:cross-fa-dtc}{{29}{13}{DTC Code Architecture}{equation.2.29}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {7}{\ignorespaces DTC pool architecture showing native pools per FA class, companion pair connections, and cross-FA injection pathways.}}{13}{figure.7}\protected@file@percent }
+\newlabel{fig:dtc-pool-architecture}{{7}{13}{DTC pool architecture showing native pools per FA class, companion pair connections, and cross-FA injection pathways}{figure.7}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.6}Warranty Decision Probabilities}{13}{subsection.2.6}\protected@file@percent }
+\newlabel{sec:warranty-decision-probabilities}{{2.6}{13}{Warranty Decision Probabilities}{subsection.2.6}{}}
+\newlabel{eq:wd-asic}{{30}{13}{Warranty Decision Probabilities}{equation.2.30}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {7}{\ignorespaces Warranty decision probability distributions by FA class. PF = Production Failure, CF = Customer Failure, ATS = According to Specification. The ASIC class uses voltage-conditional probabilities (Equation~\ref {eq:wd-asic}); the Connector class uses mileage-conditional probabilities (Equation~\ref {eq:wd-connector}).}}{14}{table.7}\protected@file@percent }
+\newlabel{tab:wd-probabilities}{{7}{14}{Warranty decision probability distributions by FA class. PF = Production Failure, CF = Customer Failure, ATS = According to Specification. The ASIC class uses voltage-conditional probabilities (Equation~\ref {eq:wd-asic}); the Connector class uses mileage-conditional probabilities (Equation~\ref {eq:wd-connector})}{table.7}{}}
+\newlabel{eq:wd-connector}{{31}{14}{Warranty Decision Probabilities}{equation.2.31}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {8}{\ignorespaces Warranty decision probability distributions by Failure Analysis class, showing class-specific and context-conditional probability structures.}}{14}{figure.8}\protected@file@percent }
+\newlabel{fig:wd-probabilities}{{8}{14}{Warranty decision probability distributions by Failure Analysis class, showing class-specific and context-conditional probability structures}{figure.8}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.7}Label Noise Injection}{15}{subsection.2.7}\protected@file@percent }
+\newlabel{sec:label-noise-injection}{{2.7}{15}{Label Noise Injection}{subsection.2.7}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {8}{\ignorespaces Label noise injection mechanisms with target classes, flip directions, rates, and conditions. Total noise affects approximately 1.5\% of rows.}}{15}{table.8}\protected@file@percent }
+\newlabel{tab:label-noise}{{8}{15}{Label noise injection mechanisms with target classes, flip directions, rates, and conditions. Total noise affects approximately 1.5\% of rows}{table.8}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {9}{\ignorespaces Label noise injection mechanisms showing target classes, flip directions, rates, and boundary conditions.}}{16}{figure.9}\protected@file@percent }
+\newlabel{fig:label-noise-mechanisms}{{9}{16}{Label noise injection mechanisms showing target classes, flip directions, rates, and boundary conditions}{figure.9}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {3}Data Preparation Pipeline}{16}{section.3}\protected@file@percent }
+\newlabel{sec:data-preparation-pipeline}{{3}{16}{Data Preparation Pipeline}{section.3}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.1}Data Loading and Cleaning}{16}{subsection.3.1}\protected@file@percent }
+\newlabel{sec:data-loading}{{3.1}{16}{Data Loading and Cleaning}{subsection.3.1}{}}
+\newlabel{eq:null-dtc}{{32}{16}{Data Loading and Cleaning}{equation.3.32}{}}
+\newlabel{eq:null-complaint}{{33}{16}{Data Loading and Cleaning}{equation.3.33}{}}
+\newlabel{eq:null-fa}{{34}{16}{Data Loading and Cleaning}{equation.3.34}{}}
+\newlabel{eq:null-wd}{{35}{16}{Data Loading and Cleaning}{equation.3.35}{}}
+\newlabel{eq:le-fa}{{36}{17}{Data Loading and Cleaning}{equation.3.36}{}}
+\newlabel{eq:le-wd}{{37}{17}{Data Loading and Cleaning}{equation.3.37}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {10}{\ignorespaces Data loading and cleaning pipeline showing the sequence of null handling, label encoding, DTC extraction, and train/test split.}}{17}{figure.10}\protected@file@percent }
+\newlabel{fig:data-loading-pipeline}{{10}{17}{Data loading and cleaning pipeline showing the sequence of null handling, label encoding, DTC extraction, and train/test split}{figure.10}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.2}Train-Test Split Strategy}{17}{subsection.3.2}\protected@file@percent }
+\newlabel{sec:train-test-split}{{3.2}{17}{Train-Test Split Strategy}{subsection.3.2}{}}
+\newlabel{eq:train-test-split}{{38}{18}{Train-Test Split Strategy}{equation.3.38}{}}
+\newlabel{eq:split-objects}{{39}{18}{Train-Test Split Strategy}{equation.3.39}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {11}{\ignorespaces Train/test split strategy showing the split occurring before any transformer fitting, with separate fit/transform paths.}}{18}{figure.11}\protected@file@percent }
+\newlabel{fig:train-test-split}{{11}{18}{Train/test split strategy showing the split occurring before any transformer fitting, with separate fit/transform paths}{figure.11}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.3}Feature Engineering --- Derived Columns}{18}{subsection.3.3}\protected@file@percent }
+\newlabel{sec:derived-columns}{{3.3}{18}{Feature Engineering --- Derived Columns}{subsection.3.3}{}}
+\newlabel{eq:mileage-bracket}{{40}{19}{Feature Engineering --- Derived Columns}{equation.3.40}{}}
+\newlabel{eq:claim-age}{{41}{19}{Feature Engineering --- Derived Columns}{equation.3.41}{}}
+\newlabel{eq:voltage-bracket}{{42}{19}{Feature Engineering --- Derived Columns}{equation.3.42}{}}
+\newlabel{eq:dtc-count-bracket}{{43}{19}{Feature Engineering --- Derived Columns}{equation.3.43}{}}
+\newlabel{eq:int-volt-p}{{44}{19}{Feature Engineering --- Derived Columns}{equation.3.44}{}}
+\newlabel{eq:int-volt-u}{{45}{19}{Feature Engineering --- Derived Columns}{equation.3.45}{}}
+\newlabel{eq:int-volt-c}{{46}{19}{Feature Engineering --- Derived Columns}{equation.3.46}{}}
+\newlabel{eq:int-multi}{{47}{19}{Feature Engineering --- Derived Columns}{equation.3.47}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {9}{\ignorespaces Derived feature specifications: feature type, binning thresholds, and design rationale. Computed after the train/test split.}}{20}{table.9}\protected@file@percent }
+\newlabel{tab:derived-features}{{9}{20}{Derived feature specifications: feature type, binning thresholds, and design rationale. Computed after the train/test split}{table.9}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {12}{\ignorespaces Derived feature engineering showing the transformation from raw columns to binned and interaction features.}}{20}{figure.12}\protected@file@percent }
+\newlabel{fig:derived-features}{{12}{20}{Derived feature engineering showing the transformation from raw columns to binned and interaction features}{figure.12}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.4}Transformer Fitting Pipeline}{21}{subsection.3.4}\protected@file@percent }
+\newlabel{sec:transformer-fitting}{{3.4}{21}{Transformer Fitting Pipeline}{subsection.3.4}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {10}{\ignorespaces Transformer pipeline: 12 transformers fitted on training data only, with output types and dimensions. All OHE encoders use \texttt  {handle\_unknown="ignore"} for robustness to unseen categories at inference.}}{21}{table.10}\protected@file@percent }
+\newlabel{tab:transformer-pipeline}{{10}{21}{Transformer pipeline: 12 transformers fitted on training data only, with output types and dimensions. All OHE encoders use \texttt {handle\_unknown="ignore"} for robustness to unseen categories at inference}{table.10}{}}
+\newlabel{eq:feature-matrix}{{48}{21}{Transformer Fitting Pipeline}{equation.3.48}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {13}{\ignorespaces Transformer fitting pipeline showing the 12 transformers, their fit-on-train/transform-on-both pattern, and the horizontal stack assembly.}}{22}{figure.13}\protected@file@percent }
+\newlabel{fig:transformer-pipeline}{{13}{22}{Transformer fitting pipeline showing the 12 transformers, their fit-on-train/transform-on-both pattern, and the horizontal stack assembly}{figure.13}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.5}DTC Feature Extraction}{22}{subsection.3.5}\protected@file@percent }
+\newlabel{sec:dtc-feature-extraction}{{3.5}{22}{DTC Feature Extraction}{subsection.3.5}{}}
+\newlabel{eq:dtc-parse}{{49}{22}{DTC Feature Extraction}{equation.3.49}{}}
+\newlabel{eq:has-p}{{50}{22}{DTC Feature Extraction}{equation.3.50}{}}
+\newlabel{eq:dtc-onehot}{{51}{22}{DTC Feature Extraction}{equation.3.51}{}}
+\newlabel{eq:dtc-null}{{52}{22}{DTC Feature Extraction}{equation.3.52}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {11}{\ignorespaces High-value DTC categories in \texttt  {HIGH\_VALUE\_DTCS}, with code ranges and counts. Total: 90+ codes spanning all vehicle subsystems.}}{23}{table.11}\protected@file@percent }
+\newlabel{tab:dtc-categories}{{11}{23}{High-value DTC categories in \texttt {HIGH\_VALUE\_DTCS}, with code ranges and counts. Total: 90+ codes spanning all vehicle subsystems}{table.11}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {14}{\ignorespaces DTC feature extraction pipeline showing the transformation from raw DTC strings to structured feature vectors.}}{23}{figure.14}\protected@file@percent }
+\newlabel{fig:dtc-feature-extraction}{{14}{23}{DTC feature extraction pipeline showing the transformation from raw DTC strings to structured feature vectors}{figure.14}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.6}Complaint Matching}{24}{subsection.3.6}\protected@file@percent }
+\newlabel{sec:complaint-matching}{{3.6}{24}{Complaint Matching}{subsection.3.6}{}}
+\newlabel{eq:keyword-match}{{53}{24}{Complaint Matching}{equation.3.53}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {12}{\ignorespaces Complaint keyword map used by \texttt  {match\_complaint()}. Keywords are checked in dictionary order (Python 3.7+ guarantees insertion order). First match wins.}}{24}{table.12}\protected@file@percent }
+\newlabel{tab:complaint-keywords}{{12}{24}{Complaint keyword map used by \texttt {match\_complaint()}. Keywords are checked in dictionary order (Python 3.7+ guarantees insertion order). First match wins}{table.12}{}}
+\newlabel{eq:fuzzy-match}{{54}{24}{Complaint Matching}{equation.3.54}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {15}{\ignorespaces Complaint matching flow showing the keyword-first, fuzzy-fallback strategy with default.}}{25}{figure.15}\protected@file@percent }
+\newlabel{fig:complaint-matching}{{15}{25}{Complaint matching flow showing the keyword-first, fuzzy-fallback strategy with default}{figure.15}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {4}Model Architecture}{26}{section.4}\protected@file@percent }
+\newlabel{sec:model-architecture}{{4}{26}{Model Architecture}{section.4}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.1}XGBoost Classifier Configuration}{26}{subsection.4.1}\protected@file@percent }
+\newlabel{sec:xgboost-configuration}{{4.1}{26}{XGBoost Classifier Configuration}{subsection.4.1}{}}
+\newlabel{eq:xgb-nest}{{55}{26}{XGBoost Classifier Configuration}{equation.4.55}{}}
+\newlabel{eq:xgb-depth}{{56}{26}{XGBoost Classifier Configuration}{equation.4.56}{}}
+\newlabel{eq:xgb-lr}{{57}{26}{XGBoost Classifier Configuration}{equation.4.57}{}}
+\newlabel{eq:xgb-mcw}{{58}{26}{XGBoost Classifier Configuration}{equation.4.58}{}}
+\newlabel{eq:xgb-sub}{{59}{26}{XGBoost Classifier Configuration}{equation.4.59}{}}
+\newlabel{eq:xgb-col}{{60}{26}{XGBoost Classifier Configuration}{equation.4.60}{}}
+\newlabel{eq:xgb-l2}{{61}{26}{XGBoost Classifier Configuration}{equation.4.61}{}}
+\newlabel{eq:xgb-metric}{{62}{26}{XGBoost Classifier Configuration}{equation.4.62}{}}
+\newlabel{eq:xgb-rs}{{63}{26}{XGBoost Classifier Configuration}{equation.4.63}{}}
+\newlabel{eq:xgb-update}{{64}{26}{XGBoost Classifier Configuration}{equation.4.64}{}}
+\newlabel{eq:xgb-objective}{{65}{26}{XGBoost Classifier Configuration}{equation.4.65}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {13}{\ignorespaces XGBoost hyperparameters with values and design rationale. Both FA and WD classifiers use identical settings.}}{27}{table.13}\protected@file@percent }
+\newlabel{tab:xgb-hyperparams}{{13}{27}{XGBoost hyperparameters with values and design rationale. Both FA and WD classifiers use identical settings}{table.13}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {16}{\ignorespaces XGBoost architecture showing sequential tree building with learning rate scaling and subsampling.}}{27}{figure.16}\protected@file@percent }
+\newlabel{fig:xgboost-architecture}{{16}{27}{XGBoost architecture showing sequential tree building with learning rate scaling and subsampling}{figure.16}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.2}Cascade Architecture --- Out-of-Fold Probabilities}{28}{subsection.4.2}\protected@file@percent }
+\newlabel{sec:cascade-architecture}{{4.2}{28}{Cascade Architecture --- Out-of-Fold Probabilities}{subsection.4.2}{}}
+\newlabel{eq:oof-probs}{{66}{28}{Cascade Architecture --- Out-of-Fold Probabilities}{equation.4.66}{}}
+\newlabel{eq:fa-retrain}{{67}{28}{Cascade Architecture --- Out-of-Fold Probabilities}{equation.4.67}{}}
+\newlabel{eq:wd-train-augment}{{68}{28}{Cascade Architecture --- Out-of-Fold Probabilities}{equation.4.68}{}}
+\newlabel{eq:wd-test-augment}{{69}{28}{Cascade Architecture --- Out-of-Fold Probabilities}{equation.4.69}{}}
+\newlabel{eq:wd-predict}{{70}{28}{Cascade Architecture --- Out-of-Fold Probabilities}{equation.4.70}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {17}{\ignorespaces Cascade architecture showing OOF probability generation for training and direct prediction for inference, both feeding into the WD classifier.}}{28}{figure.17}\protected@file@percent }
+\newlabel{fig:cascade-oof}{{17}{28}{Cascade architecture showing OOF probability generation for training and direct prediction for inference, both feeding into the WD classifier}{figure.17}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.3}Rule Engine --- Complete Rule Specification}{29}{subsection.4.3}\protected@file@percent }
+\newlabel{sec:rule-engine-specification}{{4.3}{29}{Rule Engine --- Complete Rule Specification}{subsection.4.3}{}}
+\newlabel{eq:rule-eval}{{71}{29}{Rule Engine --- Complete Rule Specification}{equation.4.71}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {14}{\ignorespaces Complete rule specification for the 9 deterministic rules, evaluated in priority order with first-match-wins logic. Source: \texttt  {ml\_predictor.py:138--226}.}}{29}{table.14}\protected@file@percent }
+\newlabel{tab:rules}{{14}{29}{Complete rule specification for the 9 deterministic rules, evaluated in priority order with first-match-wins logic. Source: \texttt {ml\_predictor.py:138--226}}{table.14}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {18}{\ignorespaces Rule engine flow showing sequential evaluation of 9 rules with first-match-wins priority logic.}}{30}{figure.18}\protected@file@percent }
+\newlabel{fig:rule-engine-flow}{{18}{30}{Rule engine flow showing sequential evaluation of 9 rules with first-match-wins priority logic}{figure.18}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.4}LLM Integration Architecture}{30}{subsection.4.4}\protected@file@percent }
+\newlabel{sec:llm-integration}{{4.4}{30}{LLM Integration Architecture}{subsection.4.4}{}}
+\newlabel{eq:provider-select}{{72}{31}{LLM Integration Architecture}{equation.4.72}{}}
+\newlabel{eq:retry-backoff}{{73}{31}{LLM Integration Architecture}{equation.4.73}{}}
+\newlabel{eq:llm-available}{{74}{31}{LLM Integration Architecture}{equation.4.74}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {15}{\ignorespaces LLM prompt services: three distinct prompts for the three LLM-enhanced pipeline stages. All prompts request JSON output with \texttt  {temperature=0, seed=42} for determinism.}}{31}{table.15}\protected@file@percent }
+\newlabel{tab:llm-services}{{15}{31}{LLM prompt services: three distinct prompts for the three LLM-enhanced pipeline stages. All prompts request JSON output with \texttt {temperature=0, seed=42} for determinism}{table.15}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {19}{\ignorespaces LLM integration architecture showing dual provider support, retry logic, and three service endpoints.}}{31}{figure.19}\protected@file@percent }
+\newlabel{fig:llm-integration}{{19}{31}{LLM integration architecture showing dual provider support, retry logic, and three service endpoints}{figure.19}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.5}LLM Claim Categorisation}{32}{subsection.4.5}\protected@file@percent }
+\newlabel{sec:llm-claim-categorisation}{{4.5}{32}{LLM Claim Categorisation}{subsection.4.5}{}}
+\newlabel{eq:llm-wd-mapping}{{75}{32}{LLM Claim Categorisation}{equation.4.75}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {16}{\ignorespaces LLM category to warranty decision mapping. The ``other'' category provides no signal, preventing noise injection into score combination.}}{32}{table.16}\protected@file@percent }
+\newlabel{tab:llm-category-mapping}{{16}{32}{LLM category to warranty decision mapping. The ``other'' category provides no signal, preventing noise injection into score combination}{table.16}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {20}{\ignorespaces LLM claim categorisation flow showing the 7-category output with disambiguation rules and warranty decision mapping.}}{33}{figure.20}\protected@file@percent }
+\newlabel{fig:llm-categorisation}{{20}{33}{LLM claim categorisation flow showing the 7-category output with disambiguation rules and warranty decision mapping}{figure.20}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.6}Score Combination Logic}{33}{subsection.4.6}\protected@file@percent }
+\newlabel{sec:score-combination-logic}{{4.6}{33}{Score Combination Logic}{subsection.4.6}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {17}{\ignorespaces Score combination constants with values and descriptions. Source: \texttt  {ml\_predictor.py:623--652}.}}{34}{table.17}\protected@file@percent }
+\newlabel{tab:combination-constants}{{17}{34}{Score combination constants with values and descriptions. Source: \texttt {ml\_predictor.py:623--652}}{table.17}{}}
+\newlabel{eq:combine-agree-llm}{{76}{34}{Score Combination Logic}{equation.4.76}{}}
+\newlabel{eq:combine-agree-no-llm}{{77}{34}{Score Combination Logic}{equation.4.77}{}}
+\newlabel{eq:combine-disagree-llm}{{78}{34}{Score Combination Logic}{equation.4.78}{}}
+\newlabel{eq:combine-disagree-no-llm}{{79}{34}{Score Combination Logic}{equation.4.79}{}}
+\newlabel{eq:combine-no-rule}{{80}{34}{Score Combination Logic}{equation.4.80}{}}
+\newlabel{eq:confidence-clamp}{{81}{35}{Score Combination Logic}{equation.4.81}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {18}{\ignorespaces Confidence threshold tiers for status determination.}}{35}{table.18}\protected@file@percent }
+\newlabel{tab:confidence-tiers}{{18}{35}{Confidence threshold tiers for status determination}{table.18}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {21}{\ignorespaces Score combination decision tree showing all scenarios with weights, bonuses, and confidence threshold tiers.}}{35}{figure.21}\protected@file@percent }
+\newlabel{fig:score-combination}{{21}{35}{Score combination decision tree showing all scenarios with weights, bonuses, and confidence threshold tiers}{figure.21}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {5}Inference Pipeline}{36}{section.5}\protected@file@percent }
+\newlabel{sec:inference-pipeline}{{5}{36}{Inference Pipeline}{section.5}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.1}Stage~1 --- LLM Claim Understanding}{36}{subsection.5.1}\protected@file@percent }
+\newlabel{sec:stage1-llm-understanding}{{5.1}{36}{Stage~1 --- LLM Claim Understanding}{subsection.5.1}{}}
+\newlabel{eq:stage1-input}{{82}{36}{Stage~1 --- LLM Claim Understanding}{equation.5.82}{}}
+\newlabel{eq:stage1-output}{{83}{36}{Stage~1 --- LLM Claim Understanding}{equation.5.83}{}}
+\newlabel{eq:stage1-active}{{84}{37}{Stage~1 --- LLM Claim Understanding}{equation.5.84}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {22}{\ignorespaces Stage~1 LLM claim understanding flow showing the semantic analysis of technician notes and DTC codes.}}{37}{figure.22}\protected@file@percent }
+\newlabel{fig:stage1-llm-understanding}{{22}{37}{Stage~1 LLM claim understanding flow showing the semantic analysis of technician notes and DTC codes}{figure.22}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.2}Stage~2 --- Rule Engine Evaluation}{37}{subsection.5.2}\protected@file@percent }
+\newlabel{sec:stage2-rule-engine}{{5.2}{37}{Stage~2 --- Rule Engine Evaluation}{subsection.5.2}{}}
+\newlabel{eq:stage2-input}{{85}{37}{Stage~2 --- Rule Engine Evaluation}{equation.5.85}{}}
+\newlabel{eq:stage2-output}{{86}{37}{Stage~2 --- Rule Engine Evaluation}{equation.5.86}{}}
+\newlabel{eq:stage2-first-match}{{87}{37}{Stage~2 --- Rule Engine Evaluation}{equation.5.87}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {23}{\ignorespaces Stage~2 rule engine evaluation showing sequential priority-ordered rule matching.}}{38}{figure.23}\protected@file@percent }
+\newlabel{fig:stage2-rule-engine}{{23}{38}{Stage~2 rule engine evaluation showing sequential priority-ordered rule matching}{figure.23}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.3}Stage~3 --- Feature Translation}{38}{subsection.5.3}\protected@file@percent }
+\newlabel{sec:stage3-feature-translation}{{5.3}{38}{Stage~3 --- Feature Translation}{subsection.5.3}{}}
+\newlabel{eq:stage3-merge}{{88}{38}{Stage~3 --- Feature Translation}{equation.5.88}{}}
+\newlabel{eq:stage3-fallback}{{89}{38}{Stage~3 --- Feature Translation}{equation.5.89}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {24}{\ignorespaces Stage~3 feature translation showing the LLM and fallback paths converging to a unified feature dictionary.}}{39}{figure.24}\protected@file@percent }
+\newlabel{fig:stage3-feature-translation}{{24}{39}{Stage~3 feature translation showing the LLM and fallback paths converging to a unified feature dictionary}{figure.24}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.4}Stage~4 --- XGBoost Cascade Scoring}{39}{subsection.5.4}\protected@file@percent }
+\newlabel{sec:stage4-xgboost-cascade}{{5.4}{39}{Stage~4 --- XGBoost Cascade Scoring}{subsection.5.4}{}}
+\newlabel{eq:stage4-features}{{90}{39}{Stage~4 --- XGBoost Cascade Scoring}{equation.5.90}{}}
+\newlabel{eq:stage4-fa}{{91}{39}{Stage~4 --- XGBoost Cascade Scoring}{equation.5.91}{}}
+\newlabel{eq:stage4-wd-augment}{{92}{39}{Stage~4 --- XGBoost Cascade Scoring}{equation.5.92}{}}
+\newlabel{eq:stage4-wd}{{93}{39}{Stage~4 --- XGBoost Cascade Scoring}{equation.5.93}{}}
+\newlabel{eq:stage4-confidence}{{94}{39}{Stage~4 --- XGBoost Cascade Scoring}{equation.5.94}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {25}{\ignorespaces Stage~4 XGBoost cascade scoring showing the FA$\to $WD cascade and geometric mean confidence computation.}}{40}{figure.25}\protected@file@percent }
+\newlabel{fig:stage4-xgboost-cascade}{{25}{40}{Stage~4 XGBoost cascade scoring showing the FA$\to $WD cascade and geometric mean confidence computation}{figure.25}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.5}Stage~5 --- Score Combination}{40}{subsection.5.5}\protected@file@percent }
+\newlabel{sec:stage5-score-combination}{{5.5}{40}{Stage~5 --- Score Combination}{subsection.5.5}{}}
+\newlabel{eq:stage5-input}{{95}{40}{Stage~5 --- Score Combination}{equation.5.95}{}}
+\newlabel{eq:stage5-agreement}{{96}{40}{Stage~5 --- Score Combination}{equation.5.96}{}}
+\newlabel{eq:stage5-llm-rule}{{97}{40}{Stage~5 --- Score Combination}{equation.5.97}{}}
+\newlabel{eq:stage5-llm-ml}{{98}{40}{Stage~5 --- Score Combination}{equation.5.98}{}}
+\newlabel{eq:stage5-output}{{99}{40}{Stage~5 --- Score Combination}{equation.5.99}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {26}{\ignorespaces Stage~5 score combination showing the agreement check, weighted blending, and status determination.}}{41}{figure.26}\protected@file@percent }
+\newlabel{fig:stage5-score-combination}{{26}{41}{Stage~5 score combination showing the agreement check, weighted blending, and status determination}{figure.26}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.6}Stage~6 --- Output Formatting}{41}{subsection.5.6}\protected@file@percent }
+\newlabel{sec:stage6-output-formatting}{{5.6}{41}{Stage~6 --- Output Formatting}{subsection.5.6}{}}
+\newlabel{eq:stage6-reason}{{100}{41}{Stage~6 --- Output Formatting}{equation.5.100}{}}
+\newlabel{eq:stage6-output}{{101}{41}{Stage~6 --- Output Formatting}{equation.5.101}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {27}{\ignorespaces Stage~6 output formatting showing the LLM natural-language path and the template-based fallback path.}}{42}{figure.27}\protected@file@percent }
+\newlabel{fig:stage6-output-formatting}{{27}{42}{Stage~6 output formatting showing the LLM natural-language path and the template-based fallback path}{figure.27}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.7}Complete Prediction Flow}{42}{subsection.5.7}\protected@file@percent }
+\newlabel{sec:complete-prediction-flow}{{5.7}{42}{Complete Prediction Flow}{subsection.5.7}{}}
+\newlabel{eq:full-pipeline}{{102}{42}{Complete Prediction Flow}{equation.5.102}{}}
+\newlabel{eq:pipeline-modes}{{103}{42}{Complete Prediction Flow}{equation.5.103}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {28}{\ignorespaces Complete prediction flow showing the six-stage pipeline with LLM and fallback paths, error handling, and logging.}}{43}{figure.28}\protected@file@percent }
+\newlabel{fig:complete-predict-flow}{{28}{43}{Complete prediction flow showing the six-stage pipeline with LLM and fallback paths, error handling, and logging}{figure.28}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {6}Evaluation Methodology}{43}{section.6}\protected@file@percent }
+\newlabel{sec:evaluation-methodology}{{6}{43}{Evaluation Methodology}{section.6}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.1}Isolated Classifier Evaluation}{43}{subsection.6.1}\protected@file@percent }
+\newlabel{sec:isolated-classifier-evaluation}{{6.1}{43}{Isolated Classifier Evaluation}{subsection.6.1}{}}
+\newlabel{eq:classifier-accuracy}{{104}{43}{Isolated Classifier Evaluation}{equation.6.104}{}}
+\newlabel{eq:weighted-precision}{{105}{43}{Isolated Classifier Evaluation}{equation.6.105}{}}
+\newlabel{eq:weighted-f1}{{106}{43}{Isolated Classifier Evaluation}{equation.6.106}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {29}{\ignorespaces Isolated classifier evaluation showing the metrics computation pipeline for both FA and WD classifiers.}}{44}{figure.29}\protected@file@percent }
+\newlabel{fig:classifier-evaluation}{{29}{44}{Isolated classifier evaluation showing the metrics computation pipeline for both FA and WD classifiers}{figure.29}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.2}Cross-Validation on Held-Out Test Set}{44}{subsection.6.2}\protected@file@percent }
+\newlabel{sec:cross-validation}{{6.2}{44}{Cross-Validation on Held-Out Test Set}{subsection.6.2}{}}
+\newlabel{eq:cv-partition}{{107}{44}{Cross-Validation on Held-Out Test Set}{equation.6.107}{}}
+\newlabel{eq:cv-acc}{{108}{44}{Cross-Validation on Held-Out Test Set}{equation.6.108}{}}
+\newlabel{eq:cv-ci}{{109}{44}{Cross-Validation on Held-Out Test Set}{equation.6.109}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {30}{\ignorespaces Cross-validation on held-out test set showing the 3-fold partitioning strategy.}}{45}{figure.30}\protected@file@percent }
+\newlabel{fig:cv-on-test-set}{{30}{45}{Cross-validation on held-out test set showing the 3-fold partitioning strategy}{figure.30}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.3}Cascade Calibration Check}{45}{subsection.6.3}\protected@file@percent }
+\newlabel{sec:cascade-calibration}{{6.3}{45}{Cascade Calibration Check}{subsection.6.3}{}}
+\newlabel{eq:calib-train}{{110}{45}{Cascade Calibration Check}{equation.6.110}{}}
+\newlabel{eq:calib-test}{{111}{45}{Cascade Calibration Check}{equation.6.111}{}}
+\newlabel{eq:calib-gap}{{112}{45}{Cascade Calibration Check}{equation.6.112}{}}
+\newlabel{eq:calib-alert}{{113}{45}{Cascade Calibration Check}{equation.6.113}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {31}{\ignorespaces Cascade calibration check showing overlaid probability distributions for training and test data with gap annotation.}}{46}{figure.31}\protected@file@percent }
+\newlabel{fig:cascade-calibration}{{31}{46}{Cascade calibration check showing overlaid probability distributions for training and test data with gap annotation}{figure.31}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.4}End-to-End Pipeline Evaluation}{46}{subsection.6.4}\protected@file@percent }
+\newlabel{sec:end-to-end-evaluation}{{6.4}{46}{End-to-End Pipeline Evaluation}{subsection.6.4}{}}
+\newlabel{eq:e2e-accuracy}{{114}{46}{End-to-End Pipeline Evaluation}{equation.6.114}{}}
+\newlabel{eq:per-engine-accuracy}{{115}{46}{End-to-End Pipeline Evaluation}{equation.6.115}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {32}{\ignorespaces End-to-end pipeline evaluation showing the per-engine accuracy breakdown.}}{47}{figure.32}\protected@file@percent }
+\newlabel{fig:pipeline-evaluation}{{32}{47}{End-to-end pipeline evaluation showing the per-engine accuracy breakdown}{figure.32}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.5}Feature Importance Analysis}{47}{subsection.6.5}\protected@file@percent }
+\newlabel{sec:feature-importance}{{6.5}{47}{Feature Importance Analysis}{subsection.6.5}{}}
+\newlabel{eq:gini-importance}{{116}{47}{Feature Importance Analysis}{equation.6.116}{}}
+\newlabel{eq:ensemble-importance}{{117}{47}{Feature Importance Analysis}{equation.6.117}{}}
+\newlabel{eq:wd-feature-names}{{118}{47}{Feature Importance Analysis}{equation.6.118}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {33}{\ignorespaces Feature importance analysis showing the top 20 features for both FA and WD classifiers.}}{48}{figure.33}\protected@file@percent }
+\newlabel{fig:feature-importance}{{33}{48}{Feature importance analysis showing the top 20 features for both FA and WD classifiers}{figure.33}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {7}System Architecture \& Deployment}{48}{section.7}\protected@file@percent }
+\newlabel{sec:system-architecture}{{7}{48}{System Architecture \& Deployment}{section.7}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.1}FastAPI Backend Architecture}{48}{subsection.7.1}\protected@file@percent }
+\newlabel{sec:fastapi-backend}{{7.1}{48}{FastAPI Backend Architecture}{subsection.7.1}{}}
+\newlabel{eq:claim-request}{{119}{48}{FastAPI Backend Architecture}{equation.7.119}{}}
+\newlabel{eq:claim-response}{{120}{48}{FastAPI Backend Architecture}{equation.7.120}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {19}{\ignorespaces API endpoints provided by the TRACE backend.}}{48}{table.19}\protected@file@percent }
+\newlabel{tab:api-endpoints}{{19}{48}{API endpoints provided by the TRACE backend}{table.19}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {34}{\ignorespaces FastAPI backend architecture showing middleware, endpoints, schemas, and ML predictor integration.}}{49}{figure.34}\protected@file@percent }
+\newlabel{fig:fastapi-architecture}{{34}{49}{FastAPI backend architecture showing middleware, endpoints, schemas, and ML predictor integration}{figure.34}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.2}Frontend Architecture}{50}{subsection.7.2}\protected@file@percent }
+\newlabel{sec:frontend-architecture}{{7.2}{50}{Frontend Architecture}{subsection.7.2}{}}
+\newlabel{eq:frontend-fetch}{{121}{50}{Frontend Architecture}{equation.7.121}{}}
+\newlabel{eq:frontend-response}{{122}{50}{Frontend Architecture}{equation.7.122}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {35}{\ignorespaces Frontend architecture showing the single-page application with form inputs and result display.}}{50}{figure.35}\protected@file@percent }
+\newlabel{fig:frontend-architecture}{{35}{50}{Frontend architecture showing the single-page application with form inputs and result display}{figure.35}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.3}Docker Compose Deployment}{51}{subsection.7.3}\protected@file@percent }
+\newlabel{sec:docker-compose}{{7.3}{51}{Docker Compose Deployment}{subsection.7.3}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {20}{\ignorespaces Docker service configuration.}}{51}{table.20}\protected@file@percent }
+\newlabel{tab:docker-services}{{20}{51}{Docker service configuration}{table.20}{}}
+\newlabel{eq:docker-network}{{123}{51}{Docker Compose Deployment}{equation.7.123}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {36}{\ignorespaces Docker Compose architecture showing container deployment with health checks and shared network.}}{52}{figure.36}\protected@file@percent }
+\newlabel{fig:docker-compose-architecture}{{36}{52}{Docker Compose architecture showing container deployment with health checks and shared network}{figure.36}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.4}Logging and Observability}{52}{subsection.7.4}\protected@file@percent }
+\newlabel{sec:logging-observability}{{7.4}{52}{Logging and Observability}{subsection.7.4}{}}
+\newlabel{eq:log-format}{{124}{52}{Logging and Observability}{equation.7.124}{}}
+\newlabel{eq:log-datefmt}{{125}{52}{Logging and Observability}{equation.7.125}{}}
+\newlabel{eq:log-level}{{126}{52}{Logging and Observability}{equation.7.126}{}}
+\newlabel{eq:logger-hierarchy}{{127}{52}{Logging and Observability}{equation.7.127}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {37}{\ignorespaces Logging architecture showing the hierarchical logger namespace and DecisionLogger wrapper.}}{53}{figure.37}\protected@file@percent }
+\newlabel{fig:logging-architecture}{{37}{53}{Logging architecture showing the hierarchical logger namespace and DecisionLogger wrapper}{figure.37}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.5}Model Serialization and Auto-Training}{53}{subsection.7.5}\protected@file@percent }
+\newlabel{sec:model-serialization}{{7.5}{53}{Model Serialization and Auto-Training}{subsection.7.5}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {21}{\ignorespaces Model bundle components serialised to \texttt  {trace\_models.pkl}. The bundle contains all objects needed for inference.}}{54}{table.21}\protected@file@percent }
+\newlabel{tab:model-bundle}{{21}{54}{Model bundle components serialised to \texttt {trace\_models.pkl}. The bundle contains all objects needed for inference}{table.21}{}}
+\newlabel{eq:auto-train}{{128}{54}{Model Serialization and Auto-Training}{equation.7.128}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {38}{\ignorespaces Model serialisation and auto-training showing the training-to-inference lifecycle.}}{55}{figure.38}\protected@file@percent }
+\newlabel{fig:model-serialization}{{38}{55}{Model serialisation and auto-training showing the training-to-inference lifecycle}{figure.38}{}}
+\gdef \@abspage@last{55}

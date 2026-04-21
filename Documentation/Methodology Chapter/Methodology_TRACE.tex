@@ -125,7 +125,9 @@ The tag assignment is implemented at lines 780--787 of \texttt{ml\_predictor.py}
 
 \begin{figure}[H]
     \centering
-    \fbox{\parbox{0.85\textwidth}{\centering\vspace{2cm}FIGURE: High-level architecture diagram showing the six-stage pipeline: (1) LLM Understanding $\to$ (2) Rule Engine $\to$ (3) Feature Translation $\to$ (4) XGBoost Cascade $\to$ (5) Score Combination $\to$ (6) Output Formatting, with data flow arrows between stages and fallback paths\vspace{2cm}}}
+    \fbox{\parbox{0.85\textwidth}{\centering
+    \includegraphics[width=0.85\textwidth]{figures/fig_hybrid_decision_engine_overview.pdf}
+    }}
     \caption{Hybrid decision engine overview: the six-stage processing pipeline with LLM, rule, and ML inference paths.}
     \label{fig:hybrid-decision-engine-overview}
 \end{figure}
@@ -159,7 +161,9 @@ f_6\colon & \text{ Output formatting}         & & \text{(\texttt{llm\_client.py:
 
 \begin{figure}[H]
     \centering
-    \fbox{\parbox{0.85\textwidth}{\centering\vspace{2cm}FIGURE: Detailed flow diagram with each stage showing: input types, processing logic, output types, and fallback paths. Stages 1, 3, 6 show dual LLM/fallback paths; Stages 2, 4, 5 are always active.\vspace{2cm}}}
+    \fbox{\parbox{0.85\textwidth}{\centering
+    \includegraphics[width=0.85\textwidth]{figures/fig_six_stage_pipeline.pdf}
+    }}
     \caption{Six-stage pipeline architecture with input/output types and fallback paths for each stage.}
     \label{fig:six-stage-pipeline}
 \end{figure}
@@ -289,7 +293,9 @@ The pattern correlation target for the dataset is approximately 93--96\%---inten
 
 \begin{figure}[H]
     \centering
-    \fbox{\parbox{0.85\textwidth}{\centering\vspace{2cm}FIGURE: Table showing the 11 columns with example values for 3 representative rows (one NTF, one Track burnt, one Controller), data types, and distributions\vspace{2cm}}}
+    \fbox{\parbox{0.85\textwidth}{\centering
+    \includegraphics[width=0.85\textwidth]{figures/fig_dataset_overview.pdf}
+    }}
     \caption{Dataset schema overview with example rows illustrating the column structure and data types.}
     \label{fig:dataset-overview}
 \end{figure}
@@ -342,7 +348,9 @@ The floor of 0.01 prevents any class from receiving zero allocation in later yea
 
 \begin{figure}[H]
     \centering
-    \fbox{\parbox{0.85\textwidth}{\centering\vspace{2cm}FIGURE: Stacked bar chart showing FA class proportions across years 2019--2025 with drift visualization. NTF increases, Track/ASIC/Controller decrease, Connector/Moisture increase.\vspace{2cm}}}
+    \fbox{\parbox{0.85\textwidth}{\centering
+    \includegraphics[width=0.85\textwidth]{figures/fig_fa_class_distribution.pdf}
+    }}
     \caption{Failure Analysis class proportions by model year, showing temporal drift from 2019 to 2025.}
     \label{fig:fa-class-distribution}
 \end{figure}
@@ -429,7 +437,9 @@ where \texttt{nudge\_scale = 0.08} for ASIC (line 331) and \texttt{nudge\_scale 
 
 \begin{figure}[H]
     \centering
-    \fbox{\parbox{0.85\textwidth}{\centering\vspace{2cm}FIGURE: Overlaid KDE plots showing voltage distributions for all 6 FA classes with threshold markers at 11.0V, 13.5V, 14.5V, 15.4V, 16.0V, 17.0V. ASIC and Track visibly shifted right; Controller shifted left.\vspace{2cm}}}
+    \fbox{\parbox{0.85\textwidth}{\centering
+    \includegraphics[width=0.85\textwidth]{figures/fig_voltage_distributions.pdf}
+    }}
     \caption{Voltage distributions by Failure Analysis class, showing class-specific truncated normal distributions with voltage threshold markers.}
     \label{fig:voltage-distributions}
 \end{figure}
@@ -484,7 +494,9 @@ The early-life mode ($p = 0.15$, mean $\approx 2{,}500$\,km, clipped to $[200, 8
 
 \begin{figure}[H]
     \centering
-    \fbox{\parbox{0.85\textwidth}{\centering\vspace{2cm}FIGURE: Overlaid histograms showing mileage distributions for all 6 FA classes, with inset showing the bimodal connector damage distribution (early-life peak at $\sim$2500 km, wear-and-tear peak at $\sim$75000 km)\vspace{2cm}}}
+    \fbox{\parbox{0.85\textwidth}{\centering
+    \includegraphics[width=0.85\textwidth]{figures/fig_mileage_distributions.pdf}
+    }}
     \caption{Mileage distributions by Failure Analysis class, with bimodal connector damage inset showing early-life assembly defects and wear-and-tear populations.}
     \label{fig:mileage-distributions}
 \end{figure}
@@ -588,7 +600,9 @@ DTC-complaint bias is modelled via \texttt{DTC\_COMPLAINT\_BIAS} (lines 119--181
 
 \begin{figure}[H]
     \centering
-    \fbox{\parbox{0.85\textwidth}{\centering\vspace{2cm}FIGURE: Diagram showing native DTC pools per FA class (colored boxes), companion pair connections (dashed arrows between linked codes), and cross-FA injection pathways (dotted arrows from DTC\_AMBIGUOUS\_CROSS pool)\vspace{2cm}}}
+    \fbox{\parbox{0.85\textwidth}{\centering
+    \includegraphics[width=0.85\textwidth]{figures/fig_dtc_pool_architecture.pdf}
+    }}
     \caption{DTC pool architecture showing native pools per FA class, companion pair connections, and cross-FA injection pathways.}
     \label{fig:dtc-pool-architecture}
 \end{figure}
@@ -655,7 +669,9 @@ The mileage threshold of 8{,}000\,km separates the early-life assembly defect po
 
 \begin{figure}[H]
     \centering
-    \fbox{\parbox{0.85\textwidth}{\centering\vspace{2cm}FIGURE: Stacked bar chart showing warranty decision probabilities for each FA class. ASIC shows voltage-conditional split; Connector shows mileage-conditional split.\vspace{2cm}}}
+    \fbox{\parbox{0.85\textwidth}{\centering
+    \includegraphics[width=0.85\textwidth]{figures/fig_wd_probabilities.pdf}
+    }}
     \caption{Warranty decision probability distributions by Failure Analysis class, showing class-specific and context-conditional probability structures.}
     \label{fig:wd-probabilities}
 \end{figure}
@@ -706,7 +722,9 @@ The mileage boundary noise (W7) targets the 88{,}000--112{,}000\,km zone where w
 
 \begin{figure}[H]
     \centering
-    \fbox{\parbox{0.85\textwidth}{\centering\vspace{2cm}FIGURE: Diagram showing the six noise injection mechanisms with their target classes, flip directions, and rates. ASIC boundary zone and mileage boundary zone highlighted as elevated-rate regions.\vspace{2cm}}}
+    \fbox{\parbox{0.85\textwidth}{\centering
+    \includegraphics[width=0.85\textwidth]{figures/fig_label_noise_mechanisms.pdf}
+    }}
     \caption{Label noise injection mechanisms showing target classes, flip directions, rates, and boundary conditions.}
     \label{fig:label-noise-mechanisms}
 \end{figure}
@@ -786,7 +804,9 @@ See Section~\ref{sec:dtc-feature-extraction} for details.
 
 \begin{figure}[H]
     \centering
-    \fbox{\parbox{0.85\textwidth}{\centering\vspace{2cm}FIGURE: Flow diagram: CSV $\to$ null filling $\to$ label encoding $\to$ DTC feature extraction $\to$ train/test split. The split occurs AFTER label encoding but BEFORE any fit\_transform calls.\vspace{2cm}}}
+    \fbox{\parbox{0.85\textwidth}{\centering
+    \includegraphics[width=0.85\textwidth]{figures/fig_data_loading_pipeline.pdf}
+    }}
     \caption{Data loading and cleaning pipeline showing the sequence of null handling, label encoding, DTC extraction, and train/test split.}
     \label{fig:data-loading-pipeline}
 \end{figure}
@@ -826,7 +846,9 @@ df_tr, df_te, dtc_tr, dtc_te, yfa_tr, yfa_te, ywd_tr, ywd_te = train_test_split(
 
 \begin{figure}[H]
     \centering
-    \fbox{\parbox{0.85\textwidth}{\centering\vspace{2cm}FIGURE: Split-before-fit diagram showing the training and test paths diverging after the split. Training path: fit\_transform on training slice only. Test path: transform on test slice using fitted transformers.\vspace{2cm}}}
+    \fbox{\parbox{0.85\textwidth}{\centering
+    \includegraphics[width=0.85\textwidth]{figures/fig_train_test_split.pdf}
+    }}
     \caption{Train/test split strategy showing the split occurring before any transformer fitting, with separate fit/transform paths.}
     \label{fig:train-test-split}
 \end{figure}
@@ -918,7 +940,9 @@ has\_multiple\_prefixes & Binary & $>$1 prefix & Multi-system failure indicator 
 
 \begin{figure}[H]
     \centering
-    \fbox{\parbox{0.85\textwidth}{\centering\vspace{2cm}FIGURE: Diagram showing raw columns $\to$ derived features with bin thresholds and interaction logic. Mileage $\to$ 4 bins, Voltage $\to$ 7 bins, DTC count $\to$ 4 bins, Cross features $\to$ 4 binary\vspace{2cm}}}
+    \fbox{\parbox{0.85\textwidth}{\centering
+    \includegraphics[width=0.85\textwidth]{figures/fig_derived_features.pdf}
+    }}
     \caption{Derived feature engineering showing the transformation from raw columns to binned and interaction features.}
     \label{fig:derived-features}
 \end{figure}
@@ -1006,7 +1030,9 @@ Training assembly occurs at lines 384--387 and test assembly at lines 403--406. 
 
 \begin{figure}[H]
     \centering
-    \fbox{\parbox{0.85\textwidth}{\centering\vspace{2cm}FIGURE: Diagram showing 12 transformers fitted on training data, then applied to train and test separately, with hstack assembly into final feature matrices $X_{\text{train}}$ and $X_{\text{test}}$\vspace{2cm}}}
+    \fbox{\parbox{0.85\textwidth}{\centering
+    \includegraphics[width=0.85\textwidth]{figures/fig_transformer_pipeline.pdf}
+    }}
     \caption{Transformer fitting pipeline showing the 12 transformers, their fit-on-train/transform-on-both pattern, and the horizontal stack assembly.}
     \label{fig:transformer-pipeline}
 \end{figure}
@@ -1075,7 +1101,9 @@ Sensor (O2/temp) & P0038--P0343                  & 30+ \\
 
 \begin{figure}[H]
     \centering
-    \fbox{\parbox{0.85\textwidth}{\centering\vspace{2cm}FIGURE: Flow diagram: raw DTC string $\to$ split by comma $\to$ prefix detection (P/U/C/B) $\to$ high-value matching $\to$ feature vector with count, flags, and one-hot indicators\vspace{2cm}}}
+    \fbox{\parbox{0.85\textwidth}{\centering
+    \includegraphics[width=0.85\textwidth]{figures/fig_dtc_feature_extraction.pdf}
+    }}
     \caption{DTC feature extraction pipeline showing the transformation from raw DTC strings to structured feature vectors.}
     \label{fig:dtc-feature-extraction}
 \end{figure}
@@ -1153,7 +1181,9 @@ The default complaint of ``OBD Light ON'' is used when the notes are empty or no
 
 \begin{figure}[H]
     \centering
-    \fbox{\parbox{0.85\textwidth}{\centering\vspace{2cm}FIGURE: Flow diagram: notes $\to$ keyword scan (first match wins) $\to$ complaint label; if no match $\to$ fuzzy match (cutoff=0.25) $\to$ complaint label; if still no match $\to$ ``OBD Light ON'' default\vspace{2cm}}}
+    \fbox{\parbox{0.85\textwidth}{\centering
+    \includegraphics[width=0.85\textwidth]{figures/fig_complaint_matching.pdf}
+    }}
     \caption{Complaint matching flow showing the keyword-first, fuzzy-fallback strategy with default.}
     \label{fig:complaint-matching}
 \end{figure}
@@ -1259,7 +1289,9 @@ n\_jobs            & $-1$ & Parallel tree construction using all CPU cores \\
 
 \begin{figure}[H]
     \centering
-    \fbox{\parbox{0.85\textwidth}{\centering\vspace{2cm}FIGURE: Diagram showing sequential tree building with learning rate scaling (0.02), row subsampling (80\%), and column subsampling (80\%). Each tree corrects the residual error of the ensemble.\vspace{2cm}}}
+    \fbox{\parbox{0.85\textwidth}{\centering
+    \includegraphics[width=0.85\textwidth]{figures/fig_xgboost_architecture.pdf}
+    }}
     \caption{XGBoost architecture showing sequential tree building with learning rate scaling and subsampling.}
     \label{fig:xgboost-architecture}
 \end{figure}
@@ -1329,7 +1361,9 @@ The WD prediction selects the class with the highest probability:
 
 \begin{figure}[H]
     \centering
-    \fbox{\parbox{0.85\textwidth}{\centering\vspace{2cm}FIGURE: Diagram showing 5-fold OOF probability generation for training (each fold's samples predicted by model trained on other 4 folds), and direct FA prediction for inference, with both feeding into WD classifier\vspace{2cm}}}
+    \fbox{\parbox{0.85\textwidth}{\centering
+    \includegraphics[width=0.85\textwidth]{figures/fig_cascade_oof.pdf}
+    }}
     \caption{Cascade architecture showing OOF probability generation for training and direct prediction for inference, both feeding into the WD classifier.}
     \label{fig:cascade-oof}
 \end{figure}
@@ -1487,7 +1521,9 @@ Output formatting & \texttt{format\_output()} (l.\,273) & \texttt{FORMAT\_OUTPUT
 
 \begin{figure}[H]
     \centering
-    \fbox{\parbox{0.85\textwidth}{\centering\vspace{2cm}FIGURE: Architecture diagram showing LLM client with dual provider support (OpenAI/OpenRouter), retry logic (exponential backoff), and three service endpoints (understand\_claim, translate\_to\_ml\_features, format\_output)\vspace{2cm}}}
+    \fbox{\parbox{0.85\textwidth}{\centering
+    \includegraphics[width=0.85\textwidth]{figures/fig_llm_integration.pdf}
+    }}
     \caption{LLM integration architecture showing dual provider support, retry logic, and three service endpoints.}
     \label{fig:llm-integration}
 \end{figure}
@@ -1566,7 +1602,9 @@ Section~\ref{sec:llm-integration}.
 
 \begin{figure}[H]
     \centering
-    \fbox{\parbox{0.85\textwidth}{\centering\vspace{2cm}FIGURE: Diagram showing input (notes + DTC) $\to$ LLM prompt with disambiguation rules $\to$ 7-category output with confidence score and mapped warranty decision\vspace{2cm}}}
+    \fbox{\parbox{0.85\textwidth}{\centering
+    \includegraphics[width=0.85\textwidth]{figures/fig_llm_categorisation.pdf}
+    }}
     \caption{LLM claim categorisation flow showing the 7-category output with disambiguation rules and warranty decision mapping.}
     \label{fig:llm-categorisation}
 \end{figure}
@@ -1713,7 +1751,9 @@ The LLM agreement check is implemented via \texttt{\_llm\_agrees\_with\_decision
 
 \begin{figure}[H]
     \centering
-    \fbox{\parbox{0.85\textwidth}{\centering\vspace{2cm}FIGURE: Decision tree showing all combination scenarios: rule fires? agrees with ML? LLM agrees? $\to$ weighted blend formula $\to$ status determination tier\vspace{2cm}}}
+    \fbox{\parbox{0.85\textwidth}{\centering
+    \includegraphics[width=0.85\textwidth]{figures/fig_score_combination.pdf}
+    }}
     \caption{Score combination decision tree showing all scenarios with weights, bonuses, and confidence threshold tiers.}
     \label{fig:score-combination}
 \end{figure}
@@ -1796,7 +1836,9 @@ The function \texttt{understand\_claim\_with\_retry()} is imported from \texttt{
 
 \begin{figure}[H]
     \centering
-    \fbox{\parbox{0.85\textwidth}{\centering\vspace{2cm}FIGURE: Flow diagram: notes + DTC $\to$ LLM prompt with disambiguation rules $\to$ JSON response $\to$ structured output (category, complaint, severity, FA, reasoning, confidence)\vspace{2cm}}}
+    \fbox{\parbox{0.85\textwidth}{\centering
+    \includegraphics[width=0.85\textwidth]{figures/fig_stage1_llm_understanding.pdf}
+    }}
     \caption{Stage~1 LLM claim understanding flow showing the semantic analysis of technician notes and DTC codes.}
     \label{fig:stage1-llm-understanding}
 \end{figure}
@@ -1835,7 +1877,9 @@ Called at \texttt{ml\_predictor.py:861}. If a rule fires, it is logged at lines 
 
 \begin{figure}[H]
     \centering
-    \fbox{\parbox{0.85\textwidth}{\centering\vspace{2cm}FIGURE: Flow diagram: inputs (fault\_code, notes, voltage) $\to$ sequential rule evaluation (9 rules in priority order) $\to$ first match $\to$ output; if no match $\to$ \{rule\_fired: False\}\vspace{2cm}}}
+    \fbox{\parbox{0.85\textwidth}{\centering
+    \includegraphics[width=0.85\textwidth]{figures/fig_stage2_rule_engine.pdf}
+    }}
     \caption{Stage~2 rule engine evaluation showing sequential priority-ordered rule matching.}
     \label{fig:stage2-rule-engine}
 \end{figure}
@@ -1889,7 +1933,9 @@ if features is not None and "voltage" not in features:
 
 \begin{figure}[H]
     \centering
-    \fbox{\parbox{0.85\textwidth}{\centering\vspace{2cm}FIGURE: Two-path diagram: LLM path (semantic extraction $\to$ DTC merge) vs.\ fallback path (deterministic parsing + complaint matching), converging to unified feature dictionary\vspace{2cm}}}
+    \fbox{\parbox{0.85\textwidth}{\centering
+    \includegraphics[width=0.85\textwidth]{figures/fig_stage3_feature_translation.pdf}
+    }}
     \caption{Stage~3 feature translation showing the LLM and fallback paths converging to a unified feature dictionary.}
     \label{fig:stage3-feature-translation}
 \end{figure}
@@ -1942,7 +1988,9 @@ The geometric mean penalises cases where one classifier is confident but the oth
 
 \begin{figure}[H]
     \centering
-    \fbox{\parbox{0.85\textwidth}{\centering\vspace{2cm}FIGURE: Diagram showing single-row feature construction $\to$ FA classifier $\to$ probability vector $\to$ concatenation $\to$ WD classifier $\to$ geometric mean confidence computation\vspace{2cm}}}
+    \fbox{\parbox{0.85\textwidth}{\centering
+    \includegraphics[width=0.85\textwidth]{figures/fig_stage4_xgboost_cascade.pdf}
+    }}
     \caption{Stage~4 XGBoost cascade scoring showing the FA$\to$WD cascade and geometric mean confidence computation.}
     \label{fig:stage4-xgboost-cascade}
 \end{figure}
@@ -1989,7 +2037,9 @@ The warranty decision is determined by the rule when it fires (line 776), and by
 
 \begin{figure}[H]
     \centering
-    \fbox{\parbox{0.85\textwidth}{\centering\vspace{2cm}FIGURE: Flow diagram: rule result + ML result + LLM result $\to$ agreement check $\to$ weighted blend (scenario selection) $\to$ status determination (firm/cautious/manual) $\to$ output\vspace{2cm}}}
+    \fbox{\parbox{0.85\textwidth}{\centering
+    \includegraphics[width=0.85\textwidth]{figures/fig_stage5_score_combination.pdf}
+    }}
     \caption{Stage~5 score combination showing the agreement check, weighted blending, and status determination.}
     \label{fig:stage5-score-combination}
 \end{figure}
@@ -2037,7 +2087,9 @@ The output schema matches the \texttt{ClaimResponse} Pydantic model (\texttt{mai
 
 \begin{figure}[H]
     \centering
-    \fbox{\parbox{0.85\textwidth}{\centering\vspace{2cm}FIGURE: Two-path diagram: LLM path (combined decision $\to$ LLM prompt $\to$ natural language reason) vs.\ fallback path (combined decision $\to$ template assembly $\to$ structured reason)\vspace{2cm}}}
+    \fbox{\parbox{0.85\textwidth}{\centering
+    \includegraphics[width=0.85\textwidth]{figures/fig_stage6_output_formatting.pdf}
+    }}
     \caption{Stage~6 output formatting showing the LLM natural-language path and the template-based fallback path.}
     \label{fig:stage6-output-formatting}
 \end{figure}
@@ -2083,7 +2135,9 @@ Input normalisation at lines 842--843 strips whitespace from the fault code and 
 
 \begin{figure}[H]
     \centering
-    \fbox{\parbox{0.85\textwidth}{\centering\vspace{2cm}FIGURE: End-to-end flow diagram showing all six stages with error handling paths and fallback branches. LLM path shown above, fallback path below, converging at Stage~4 (always active)\vspace{2cm}}}
+    \fbox{\parbox{0.85\textwidth}{\centering
+    \includegraphics[width=0.85\textwidth]{figures/fig_complete_predict_flow.pdf}
+    }}
     \caption{Complete prediction flow showing the six-stage pipeline with LLM and fallback paths, error handling, and logging.}
     \label{fig:complete-predict-flow}
 \end{figure}
@@ -2126,7 +2180,9 @@ The evaluation is implemented in \texttt{evaluate\_classifier()} (\texttt{evalua
 
 \begin{figure}[H]
     \centering
-    \fbox{\parbox{0.85\textwidth}{\centering\vspace{2cm}FIGURE: Diagram showing test set $\to$ classifier $\to$ predictions $\to$ metrics computation (accuracy, precision, recall, F1 for both weighted and macro averages)\vspace{2cm}}}
+    \fbox{\parbox{0.85\textwidth}{\centering
+    \includegraphics[width=0.85\textwidth]{figures/fig_classifier_evaluation.pdf}
+    }}
     \caption{Isolated classifier evaluation showing the metrics computation pipeline for both FA and WD classifiers.}
     \label{fig:classifier-evaluation}
 \end{figure}
@@ -2169,7 +2225,9 @@ The WD CV at lines 449--451 uses the FA-augmented feature matrix
 
 \begin{figure}[H]
     \centering
-    \fbox{\parbox{0.85\textwidth}{\centering\vspace{2cm}FIGURE: Diagram showing the test set (20,000 rows) partitioned into 3 folds of $\sim$6,667 rows each. Each fold is used for validation while the other 2 train a fresh model.\vspace{2cm}}}
+    \fbox{\parbox{0.85\textwidth}{\centering
+    \includegraphics[width=0.85\textwidth]{figures/fig_cv_on_test_set.pdf}
+    }}
     \caption{Cross-validation on held-out test set showing the 3-fold partitioning strategy.}
     \label{fig:cv-on-test-set}
 \end{figure}
@@ -2215,7 +2273,9 @@ for OOF probabilities if the gap exceeds 0.05.
 
 \begin{figure}[H]
     \centering
-    \fbox{\parbox{0.85\textwidth}{\centering\vspace{2cm}FIGURE: Overlaid histograms of FA top-class probabilities for training (OOF) vs.\ test (inference) data with mean markers and gap annotation. Alert threshold of 0.05 shown as dashed line.\vspace{2cm}}}
+    \fbox{\parbox{0.85\textwidth}{\centering
+    \includegraphics[width=0.85\textwidth]{figures/fig_cascade_calibration.pdf}
+    }}
     \caption{Cascade calibration check showing overlaid probability distributions for training and test data with gap annotation.}
     \label{fig:cascade-calibration}
 \end{figure}
@@ -2247,7 +2307,9 @@ The evaluation is implemented in \texttt{evaluate\_pipeline()} (\texttt{evaluate
 
 \begin{figure}[H]
     \centering
-    \fbox{\parbox{0.85\textwidth}{\centering\vspace{2cm}FIGURE: Diagram showing test rows $\to$ predict() pipeline $\to$ output comparison $\to$ per-engine accuracy breakdown (Rule+ML, LLM+Rule+ML, ML-only, LLM+ML)\vspace{2cm}}}
+    \fbox{\parbox{0.85\textwidth}{\centering
+    \includegraphics[width=0.85\textwidth]{figures/fig_pipeline_evaluation.pdf}
+    }}
     \caption{End-to-end pipeline evaluation showing the per-engine accuracy breakdown.}
     \label{fig:pipeline-evaluation}
 \end{figure}
@@ -2284,7 +2346,9 @@ The feature importance analysis is implemented at \texttt{evaluate\_model.py:399
 
 \begin{figure}[H]
     \centering
-    \fbox{\parbox{0.85\textwidth}{\centering\vspace{2cm}FIGURE: Horizontal bar charts showing top 20 features for FA classifier (left) and WD classifier (right). WD chart includes the 6 FA probability features from the cascade.\vspace{2cm}}}
+    \fbox{\parbox{0.85\textwidth}{\centering
+    \includegraphics[width=0.85\textwidth]{figures/fig_feature_importance.pdf}
+    }}
     \caption{Feature importance analysis showing the top 20 features for both FA and WD classifiers.}
     \label{fig:feature-importance}
 \end{figure}
@@ -2338,7 +2402,9 @@ The app is created at line 31: \texttt{app = FastAPI(title="TRACE Backend API", 
 
 \begin{figure}[H]
     \centering
-    \fbox{\parbox{0.85\textwidth}{\centering\vspace{2cm}FIGURE: Diagram showing FastAPI app with CORS middleware, Pydantic schemas, endpoints, and ML predictor integration\vspace{2cm}}}
+    \fbox{\parbox{0.85\textwidth}{\centering
+    \includegraphics[width=0.85\textwidth]{figures/fig_fastapi_architecture.pdf}
+    }}
     \caption{FastAPI backend architecture showing middleware, endpoints, schemas, and ML predictor integration.}
     \label{fig:fastapi-architecture}
 \end{figure}
@@ -2419,7 +2485,9 @@ The UI includes form inputs for fault code, technician notes, and voltage, with 
 
 \begin{figure}[H]
     \centering
-    \fbox{\parbox{0.85\textwidth}{\centering\vspace{2cm}FIGURE: Diagram showing HTML/CSS/JS single-page app with form inputs (fault code, notes, voltage), API call to backend, and result display panel\vspace{2cm}}}
+    \fbox{\parbox{0.85\textwidth}{\centering
+    \includegraphics[width=0.85\textwidth]{figures/fig_frontend_architecture.pdf}
+    }}
     \caption{Frontend architecture showing the single-page application with form inputs and result display.}
     \label{fig:frontend-architecture}
 \end{figure}
@@ -2499,7 +2567,9 @@ Both services use \texttt{restart: "unless-stopped"}. The backend builds from \t
 
 \begin{figure}[H]
     \centering
-    \fbox{\parbox{0.85\textwidth}{\centering\vspace{2cm}FIGURE: Diagram showing two containers (backend on port 8000, frontend on port 3000) on shared trace\_net bridge network with health check flow and dependency ordering\vspace{2cm}}}
+    \fbox{\parbox{0.85\textwidth}{\centering
+    \includegraphics[width=0.85\textwidth]{figures/fig_docker_compose_architecture.pdf}
+    }}
     \caption{Docker Compose architecture showing container deployment with health checks and shared network.}
     \label{fig:docker-compose-architecture}
 \end{figure}
@@ -2544,7 +2614,9 @@ The \texttt{DecisionLogger} class (\texttt{logging\_config.py:38--60}) provides 
 
 \begin{figure}[H]
     \centering
-    \fbox{\parbox{0.85\textwidth}{\centering\vspace{2cm}FIGURE: Diagram showing logger hierarchy: root $\to$ trace $\to$ \{trace.ml\_predictor, trace.llm\_client, trace.api\}, with DecisionLogger wrapper producing structured output\vspace{2cm}}}
+    \fbox{\parbox{0.85\textwidth}{\centering
+    \includegraphics[width=0.85\textwidth]{figures/fig_logging_architecture.pdf}
+    }}
     \caption{Logging architecture showing the hierarchical logger namespace and DecisionLogger wrapper.}
     \label{fig:logging-architecture}
 \end{figure}
@@ -2641,7 +2713,9 @@ The bundle is loaded lazily via the global \texttt{\_bundle} variable
 
 \begin{figure}[H]
     \centering
-    \fbox{\parbox{0.85\textwidth}{\centering\vspace{2cm}FIGURE: Diagram showing training $\to$ bundle creation $\to$ pickle serialisation $\to$ file storage $\to$ deserialisation $\to$ inference. Auto-training path shown when file missing.\vspace{2cm}}}
+    \fbox{\parbox{0.85\textwidth}{\centering
+    \includegraphics[width=0.85\textwidth]{figures/fig_model_serialization.pdf}
+    }}
     \caption{Model serialisation and auto-training showing the training-to-inference lifecycle.}
     \label{fig:model-serialization}
 \end{figure}

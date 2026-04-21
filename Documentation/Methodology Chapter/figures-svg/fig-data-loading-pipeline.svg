@@ -1,0 +1,73 @@
+<?xml version="1.0"?>
+<svg width="680" height="320" xmlns="http://www.w3.org/2000/svg" xmlns:svg="http://www.w3.org/2000/svg">
+ <title>Data Loading Pipeline</title>
+ <desc>Data loading and cleaning pipeline from CSV to train/test split</desc>
+ <defs>
+  <marker id="arrow4" markerHeight="6" markerWidth="6" orient="auto-start-reverse" refX="8" refY="5" viewBox="0 0 10 10">
+   <path d="m2,1l6,4l-6,4" fill="none" id="svg_1" stroke="context-stroke" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"/>
+  </marker>
+  <style>.c-blue rect { fill: #E6F1FB; stroke: #185FA5; stroke-width: 1; }
+      .c-blue text { fill: #0C447C; }
+      .c-purple rect { fill: #DED8F6; stroke: #534AB7; stroke-width: 1; }
+      .c-purple text { fill: #3C3489; }
+      .c-teal rect { fill: #E1F5EE; stroke: #0F6E56; stroke-width: 1; }
+      .c-teal text { fill: #085041; }
+      .c-coral rect { fill: #FAECE7; stroke: #993C1D; stroke-width: 1; }
+      .c-coral text { fill: #712B13; }
+      .c-red rect { fill: #FCEBEB; stroke: #A32D2D; stroke-width: 1; }
+      .c-red text { fill: #791F1F; }
+      .c-green rect { fill: #EAF3DE; stroke: #3B6D11; stroke-width: 1; }
+      .c-green text { fill: #27500A; }
+      .node rect { stroke-width: 1; }
+      .box rect { fill: #F1EFE8; stroke: #5F5E5A; stroke-width: 1; }
+      .box text { fill: #444441; }
+      .arr { stroke: #5F5E5A; stroke-width: 1.5; fill: none; }
+      text { font-family: sans-serif; }
+      .th { font-size: 14px; font-weight: 500; }
+      .ts { font-size: 12px; }</style>
+ </defs>
+ <g class="layer">
+  <title>Layer 1</title>
+  <text class="th" fill="#212121" font-size="16" font-weight="500" id="svg_2" text-anchor="middle" x="340" y="25">Data Loading Pipeline</text>
+  <g class="node c-blue" id="svg_3">
+   <rect height="50" id="svg_4" rx="8" width="120" x="30" y="60"/>
+   <text class="th" font-size="11" id="svg_5" text-anchor="middle" x="90" y="80">CSV Load</text>
+   <text class="ts" fill="#0C447C" font-size="9" id="svg_6" text-anchor="middle" x="90" y="98">synthetic_warranty</text>
+  </g>
+  <g class="node c-purple" id="svg_7">
+   <rect height="50" id="svg_8" rx="8" width="120" x="170" y="60"/>
+   <text class="th" font-size="11" id="svg_9" text-anchor="middle" x="230" y="80">Null Fill</text>
+   <text class="ts" fill="#3C3489" font-size="9" id="svg_10" text-anchor="middle" transform="matrix(0.817818, 0, 0, 0.846154, 42.9286, 15.4718)" x="230" y="98">DTC→&#x27;&#x27;, Complaint→...</text>
+  </g>
+  <g class="node c-teal" id="svg_11" transform="matrix(1, 0, 0, 1, 0, 0)">
+   <rect height="50" id="svg_12" rx="8" width="120" x="310" y="60"/>
+   <text class="th" font-size="11" id="svg_13" text-anchor="middle" x="370" y="80">Label Encode</text>
+   <text class="ts" fill="#085041" font-size="9" id="svg_14" text-anchor="middle" transform="matrix(0.809573, 0, 0, 0.730769, 69.6879, 25.0223)" x="370" y="98">FA → [0..5], WD → [0..2]</text>
+  </g>
+  <g class="node c-coral" id="svg_15" transform="matrix(1, 0, 0, 1, 0, 0)">
+   <rect height="50" id="svg_16" rx="8" width="120" x="450" y="60"/>
+   <text class="th" font-size="11" id="svg_17" text-anchor="middle" x="510" y="80">DTC Features</text>
+   <text class="ts" fill="#712B13" font-size="9" id="svg_18" text-anchor="middle" transform="matrix(0.846064, 0, 0, 0.846154, 78.2509, 14.4451)" x="510" y="98">extract_dtc_features()</text>
+  </g>
+  <line class="arr" id="svg_19" marker-end="url(#arrow4)" stroke="#534AB7" x1="150" x2="170" y1="85" y2="85"/>
+  <line class="arr" id="svg_20" marker-end="url(#arrow4)" stroke="#534AB7" x1="290" x2="310" y1="85" y2="85"/>
+  <line class="arr" id="svg_21" marker-end="url(#arrow4)" stroke="#534AB7" x1="430" x2="450" y1="85" y2="85"/>
+  <g class="node c-red" id="svg_22">
+   <rect height="45" id="svg_23" rx="8" width="320" x="180" y="150"/>
+   <text class="th" font-size="11" id="svg_24" text-anchor="middle" transform="matrix(0.74813, 0, 0, 0.967742, 83.8392, 10.7167)" x="340" y="170">train_test_split(test_size=0.2, random_state=42)</text>
+  </g>
+  <line class="arr" id="svg_25" marker-end="url(#arrow4)" stroke="#A32D2D" x1="340" x2="340" y1="110" y2="150"/>
+  <g class="node c-green" id="svg_26" transform="matrix(1, 0, 0, 1, -25.6674, -11.807)">
+   <rect height="45" id="svg_27" rx="8" width="140" x="80" y="230"/>
+   <text class="th" font-size="11" id="svg_28" text-anchor="middle" x="150" y="250">Training Set</text>
+   <text class="ts" font-size="9" id="svg_29" text-anchor="middle" x="150" y="268">(80,000 rows)</text>
+  </g>
+  <g class="node c-blue" id="svg_30" transform="matrix(1, 0, 0, 1, 119.61, -4.62012)">
+   <rect height="45" id="svg_31" rx="8" width="140" x="360" y="230"/>
+   <text class="th" font-size="11" id="svg_32" text-anchor="middle" x="430" y="250">Test Set</text>
+   <text class="ts" font-size="9" id="svg_33" text-anchor="middle" x="430" y="268">(20,000 rows)</text>
+  </g>
+  <path class="arr" d="m164.5,170.87l-39.65,0.51l0,35" fill="none" id="svg_34" marker-end="url(#arrow4)" stroke="#3B6D11" transform="matrix(1, 0, 0, 1, 5.64682, 7.18686)"/>
+  <path class="arr" d="m400,195l30,0l0,35" fill="none" id="svg_35" marker-end="url(#arrow4)" stroke="#185FA5" transform="matrix(1.154, 0, 0, 0.765327, 42.6078, 34.9809)"/>
+ </g>
+</svg>
